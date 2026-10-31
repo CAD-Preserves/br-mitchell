@@ -3,8 +3,8 @@
   "rendering": {
     "dpi": 300,
     "margin_crop_px": 26,
-    "num_cpu_workers": 6,
-    "page_batch_size": 24
+    "num_cpu_workers": 12,
+    "page_batch_size": 36
   },
 
   // -- Image preprocessing and orientation parameters --
@@ -46,20 +46,20 @@
   // -- Connected-component glyph and script segmentation --
   "token_segmentation": {
     "dust_max_area_px": 3,
-    "word_close_kernel": [9, 3],
-    "max_token_width_px": 270,
+    "word_close_kernel": [13, 3],
+    "max_token_width_px": 185,
     "min_token_width_px": 4,
     "min_token_height_px": 3,
     "crop_padding_px": 4,
     "punctuation_max_height_px": 12,
-    "script_max_height_ratio": 0.80,
-    "superscript_min_raise_px": 3.2,
-    "subscript_min_drop_px": 2.5,
-    "subscript_min_top_drop_px": 4.5,
+    "script_max_height_ratio": 0.78,
+    "superscript_min_raise_px": 5.0,
+    "subscript_min_drop_px": 3.5,
+    "subscript_min_top_drop_px": 6.0,
     "ellipsis_dot_max_dim_px": 12,
     "ellipsis_max_height_px": 14,
     "ellipsis_min_width_px": 15,
-    "ellipsis_max_width_px": 62,
+    "ellipsis_max_width_px": 68,
     "dash_max_height_px": 9,
     "em_dash_min_width_px": 19,
     "em_dash_max_width_px": 54,

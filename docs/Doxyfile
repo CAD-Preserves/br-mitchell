@@ -1,0 +1,13 @@
+PROJECT_NAME           = "BR Mitchell Historical Statistics CV Digitiser"
+PROJECT_BRIEF          = "Reusable Computer Vision and GPU OCR pipeline for graphical statistical tables"
+OUTPUT_DIRECTORY       = docs
+INPUT                  = core docs/architecture_and_schema.md README.md
+FILE_PATTERNS          = *.py *.md
+RECURSIVE              = YES
+EXTRACT_ALL            = YES
+OPTIMIZE_OUTPUT_JAVA   = YES
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+QUIET                  = YES
+JAVADOC_AUTOBRIEF      = YES
+
