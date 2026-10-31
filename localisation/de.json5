@@ -1,0 +1,11 @@
+{
+  // -- Pipeline-Statusmeldungen (DE, GMT+0) --
+  "pipeline_initialised": "Tabellendigitalisierungs-Pipeline auf £1£ mit OCR-Modell £2£ initialisiert.",
+  "volume_started": "Verarbeite Band £1£ (£2£ Seiten)...",
+  "volume_completed": "Band £1£ in £2£ s abgeschlossen: £3£ Abschnittsdateien nach £4£ exportiert.",
+  "page_progress": "Band £1£: £2£/£3£ Seiten verarbeitet (£4£ Token/s).",
+  "section_exported": "Abschnitt £1£ exportiert (£2£ Untertabellen, £3£ Zellen) -> £4£",
+  "error_invalid_input": "Ungültige Eingabe für £1£: £2£",
+  "error_missing_file": "Erforderliche Datei unter Pfad nicht gefunden: £1£",
+  "summary_all_done": "Alle £1£ Bände (£2£ Abschnitte insgesamt) in £3£ s digitalisiert."
+}

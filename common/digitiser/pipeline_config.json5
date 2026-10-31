@@ -1,0 +1,101 @@
+{
+  // -- Rendering and concurrency configuration --
+  "rendering": {
+    "dpi": 300,
+    "margin_crop_px": 26,
+    "num_cpu_workers": 6,
+    "page_batch_size": 24
+  },
+
+  // -- Image preprocessing and orientation parameters --
+  "preprocessing": {
+    "bg_blur_sigma": 35.0,
+    "binary_threshold": 22,
+    "deskew_max_angle_deg": 3.5,
+    "deskew_min_rule_width_px": 280,
+    "landscape_body_top_ratio": 0.09,
+    "landscape_body_bottom_ratio": 0.94,
+    "landscape_min_vertical_rule_px": 950,
+    "landscape_vh_ratio_threshold": 1.35
+  },
+
+  // -- Graphical element CV detection thresholds (at 300 DPI) --
+  "graphical_elements": {
+    "major_rule_min_width_px": 240,
+    "cmidrule_min_width_px": 75,
+    "rule_merge_y_tol_px": 6,
+    "rule_merge_x_gap_px": 28,
+    "stack_x_align_tol_px": 42,
+    "header_max_height_px": 290,
+    "underline_min_width_px": 34,
+    "underline_max_width_px": 220,
+    "underline_max_height_px": 10,
+    "underline_ink_above_lookback_px": 34,
+    "underline_min_ink_above_ratio": 0.06,
+    "brace_min_height_px": 58,
+    "brace_min_width_px": 7,
+    "brace_max_width_px": 64,
+    "brace_min_aspect_ratio": 2.0,
+    "brace_min_cusp_offset_px": 1.6,
+    "brace_end_band_ratio": 0.18,
+    "brace_mid_band_low": 0.38,
+    "brace_mid_band_high": 0.62,
+    "brace_vert_close_kernel": [1, 5]
+  },
+
+  // -- Connected-component glyph and script segmentation --
+  "token_segmentation": {
+    "dust_max_area_px": 3,
+    "word_close_kernel": [9, 3],
+    "max_token_width_px": 270,
+    "min_token_width_px": 4,
+    "min_token_height_px": 3,
+    "crop_padding_px": 4,
+    "punctuation_max_height_px": 12,
+    "script_max_height_ratio": 0.80,
+    "superscript_min_raise_px": 3.2,
+    "subscript_min_drop_px": 2.5,
+    "subscript_min_top_drop_px": 4.5,
+    "ellipsis_dot_max_dim_px": 12,
+    "ellipsis_max_height_px": 14,
+    "ellipsis_min_width_px": 15,
+    "ellipsis_max_width_px": 62,
+    "dash_max_height_px": 9,
+    "em_dash_min_width_px": 19,
+    "em_dash_max_width_px": 54,
+    "double_dash_min_width_px": 16,
+    "double_dash_max_width_px": 56
+  },
+
+  // -- GPU Optical Character Recognition parameters --
+  "ocr": {
+    "architecture": "parseq",
+    "batch_size": 512,
+    "use_fp16": true,
+    "device": "cuda"
+  },
+
+  // -- Table structure, brace span, and header hierarchy reconstruction --
+  "structure": {
+    "row_cluster_tol_px": 15,
+    "header_row_cluster_tol_px": 14,
+    "title_lookback_px": 95,
+    "col_cluster_gap_px": 18,
+    "col_assign_max_dist_px": 65,
+    "stub_col_max_right_offset_px": 260
+  },
+
+  // -- Statistical symbol semantics from Mitchell's Symbols legend --
+  "symbols": {
+    "not_available": ["...", "…", ". . .", "..", "...."],
+    "less_than_half_unit": ["--", "- -", "- - -"],
+    "nil": ["—", "–", "-"]
+  },
+
+  // -- Output paths --
+  "output": {
+    "json_dir": "output/json",
+    "localisation_dir": "localisation",
+    "default_locale": "en_gb"
+  }
+}

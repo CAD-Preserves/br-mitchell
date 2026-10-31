@@ -1,0 +1,11 @@
+{
+  // -- Pipeline status messages (EN-GB, GMT+0) --
+  "pipeline_initialised": "Initialised table digitisation pipeline on device £1£ with OCR model £2£.",
+  "volume_started": "Processing volume £1£ (£2£ pages)...",
+  "volume_completed": "Completed volume £1£ in £2£ s: exported £3£ section files to £4£.",
+  "page_progress": "Volume £1£: processed £2£/£3£ pages (£4£ tokens/s).",
+  "section_exported": "Exported section £1£ (£2£ sub-tables, £3£ cells) -> £4£",
+  "error_invalid_input": "Invalid input provided to £1£: £2£",
+  "error_missing_file": "Required file was not found at path: £1£",
+  "summary_all_done": "All £1£ volumes digitised (£2£ sections total) in £3£ s."
+}

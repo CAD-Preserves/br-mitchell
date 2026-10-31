@@ -1,0 +1,11 @@
+{
+  // -- Messages d'état du pipeline (FR, GMT+0) --
+  "pipeline_initialised": "Pipeline de numérisation des tableaux initialisé sur £1£ avec le modèle OCR £2£.",
+  "volume_started": "Traitement du volume £1£ (£2£ pages)...",
+  "volume_completed": "Volume £1£ terminé en £2£ s : £3£ fichiers de section exportés vers £4£.",
+  "page_progress": "Volume £1£ : £2£/£3£ pages traitées (£4£ jetons/s).",
+  "section_exported": "Section £1£ exportée (£2£ sous-tableaux, £3£ cellules) -> £4£",
+  "error_invalid_input": "Entrée invalide fournie à £1£ : £2£",
+  "error_missing_file": "Fichier requis introuvable au chemin : £1£",
+  "summary_all_done": "Les £1£ volumes ont été numérisés (£2£ sections au total) en £3£ s."
+}

@@ -1,0 +1,42 @@
+{
+  // -- Configured BR Mitchell volumes and reusable chapter metadata --
+  "chapters": {
+    "A": "Population and Vital Statistics",
+    "B": "Labour Force",
+    "C": "Agriculture",
+    "D": "Industry",
+    "E": "External Trade",
+    "F": "Transport and Communications",
+    "G": "Finance",
+    "H": "Prices",
+    "I": "Education",
+    "J": "National Accounts"
+  },
+
+  "volumes": [
+    {
+      "volume_id": "africa_asia_oceania",
+      "pdf_filename": "br_mitchell_africa_asia_oceania.pdf",
+      "volume_title": "International Historical Statistics: Africa, Asia and Oceania 1750-2000",
+      "edition": "Fourth Edition",
+      "start_pdf_page": 30,
+      "end_pdf_page": 1143
+    },
+    {
+      "volume_id": "americas",
+      "pdf_filename": "br_mitchell_americas.pdf",
+      "volume_title": "International Historical Statistics: The Americas 1750-2005",
+      "edition": "Sixth Edition",
+      "start_pdf_page": 24,
+      "end_pdf_page": 900
+    },
+    {
+      "volume_id": "europe",
+      "pdf_filename": "br_mitchell_europe.pdf",
+      "volume_title": "International Historical Statistics: Europe 1750-2005",
+      "edition": "Sixth Edition",
+      "start_pdf_page": 26,
+      "end_pdf_page": 1094
+    }
+  ]
+}
