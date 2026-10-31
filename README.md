@@ -7,8 +7,6 @@ JSON outputs are in `/outputs/`. To digitise from your own PDFs, see `/common/di
 <details>
   <summary><b>Technical Notes.</b></summary>
 
-  Reusable Computer Vision and GPU OCR pipeline for digitising B.R. Mitchell's *International Historical Statistics* (and similarly typeset booktabs statistical volumes) from scanned PDFs into structured JSON.
-
 ## Directory Structure
 
 - `common/digitiser/` — JSON5 pipeline and volume configurations (`pipeline_config.json5`, `volumes_config.json5`).
