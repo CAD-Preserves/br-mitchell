@@ -1,5 +1,8 @@
 # br-mitchell
 
+> [!WARNING]
+> We cannot always guarantee JSON keys are well-formatted, only that the data is complete. You will likely have to extract and clean these `.json` source files yourself for the target domain you wish to study.
+
 Data structuring repository for BR Mitchell's _International Historical Statistics_. This means we take source PDF files/scans of BR Mitchell from our private collections and restructure it into usable JSON for dataset work, particularly in testing and validation.
 
 JSON outputs are in `/outputs/`. To digitise from your own PDFs, see `/common/digitiser/volumes_config.json5` to point to your own filepaths, then run `autorun.bat`/`autorun.sh`. For IP reasons, we do not include our scans of BR Mitchell.
