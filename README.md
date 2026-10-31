@@ -1,6 +1,13 @@
 # br-mitchell
 
-Reusable Computer Vision and GPU OCR pipeline for digitising B.R. Mitchell's *International Historical Statistics* (and similarly typeset booktabs statistical volumes) from scanned PDFs into structured JSON.
+Data structuring repository for BR Mitchell's _International Historical Statistics_. This means we take source PDF files/scans of BR Mitchell from our private collections and restructure it into usable JSON for dataset work, particularly in testing and validation.
+
+JSON outputs are in `/outputs/`. To digitise from your own PDFs, see `/common/digitiser/volumes_config.json5` to point to your own filepaths, then run `autorun.bat`/`autorun.sh`. For IP reasons, we do not include our scans of BR Mitchell.
+
+<details>
+  <summary><b>Technical Notes.</b></summary>
+
+  Reusable Computer Vision and GPU OCR pipeline for digitising B.R. Mitchell's *International Historical Statistics* (and similarly typeset booktabs statistical volumes) from scanned PDFs into structured JSON.
 
 ## Directory Structure
 
@@ -36,3 +43,7 @@ python core/cli_runner.py --pdf path/to/custom_tables.pdf --volume custom_id
 ```
 
 See `docs/architecture_and_schema.md` for full details on the CV pipeline stages and output JSON schema.
+
+</details>
+
+
