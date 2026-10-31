@@ -8,6 +8,7 @@ from core.PagePreprocessor import PagePreprocessor
 from core.TokenSegmenter import TokenSegmenter
 
 _WORKER_STATE_OBJ = {
+  "cfg": None,
   "doc": None,
   "gfx": None,
   "pdf_path": None,
@@ -24,11 +25,12 @@ def A_initCpuWorker (arg1_pdf_path, arg2_pipeline_cfg_obj):
   """
   #Convert from parameters
   pdf_path = arg1_pdf_path
-  cfg_obj = arg2_pipeline_cfg_obj
+  cfg_obj = arg2_pipeline_cfg_obj if isinstance(arg2_pipeline_cfg_obj, dict) else {}
 
   # Force single OpenCV thread per worker so N workers do not oversubscribe CPU cores
   cv2.setNumThreads(1)
 
+  _WORKER_STATE_OBJ["cfg"] = cfg_obj
   _WORKER_STATE_OBJ["pdf_path"] = pdf_path
   _WORKER_STATE_OBJ["doc"] = pymupdf.open(pdf_path)
   _WORKER_STATE_OBJ["pre"] = PagePreprocessor(cfg_obj)
@@ -45,10 +47,18 @@ def B_processSinglePageCpu (arg1_page_index):
   #Convert from parameters
   page_index = int(arg1_page_index)
 
+  #Declare local instance variables
+  banner_max_y = 760
+  cfg_obj = _WORKER_STATE_OBJ["cfg"] or {}
   doc = _WORKER_STATE_OBJ["doc"]
-  pre = _WORKER_STATE_OBJ["pre"]
   gfx = _WORKER_STATE_OBJ["gfx"]
+  max_token_y = None
+  ph_jobs = []
+  ph_tokens = []
+  pre = _WORKER_STATE_OBJ["pre"]
   seg = _WORKER_STATE_OBJ["seg"]
+  slim_blocks = []
+  tok_cfg = cfg_obj.get("token_segmentation", {})
 
   p_obj = pre.E_preprocessPage(doc, page_index)
   if p_obj is None:
@@ -79,19 +89,26 @@ def B_processSinglePageCpu (arg1_page_index):
     }
 
   g_obj = gfx.E_detectAllElements(p_obj["bw_mask"])
-  s_obj = seg.D_segmentPageTokens(p_obj["rgb_img"], p_obj["bw_mask"], g_obj["erase_boxes"])
+  table_blocks = g_obj["table_blocks"]
 
-  ph_tokens = []
-  ph_jobs = []
+  if bool(tok_cfg.get("skip_prose_below_tables", True)):
+    banner_max_y = int(tok_cfg.get("banner_scan_max_y_px", 760))
+    if table_blocks:
+      max_bot = max(float(b["y_bot"]) for b in table_blocks)
+      max_token_y = max(float(banner_max_y), max_bot + 16.0)
+    else:
+      max_token_y = float(banner_max_y)
+
+  s_obj = seg.D_segmentPageTokens(p_obj["gray_img"], p_obj["bw_mask"], g_obj["erase_boxes"], max_token_y)
+
   if p_obj["portrait_header_rgb"] is not None and p_obj["portrait_header_bw"] is not None:
     ph_seg = seg.D_segmentPageTokens(p_obj["portrait_header_rgb"], p_obj["portrait_header_bw"], [])
     ph_tokens = ph_seg["tokens"]
     ph_jobs = ph_seg["ocr_jobs"]
 
   # Strip heavy internal rule lists not needed after erase_boxes
-  slim_blocks = []
-  for i in range(len(g_obj["table_blocks"])):
-    b = g_obj["table_blocks"][i]
+  for i in range(len(table_blocks)):
+    b = table_blocks[i]
     slim_blocks.append({
       "braces": b.get("braces", []),
       "cmidrules": b.get("cmidrules", []),
@@ -115,4 +132,3 @@ def B_processSinglePageCpu (arg1_page_index):
     "table_blocks": slim_blocks,
     "tokens": s_obj["tokens"]
   }
-

@@ -1,16 +1,17 @@
-"""@brief Assembles page-level tables, section banners, notes, and footnotes into per-section JSON files."""
+"""@brief Assembles page-level tables and section banners into simplified per-section JSON files."""
 
 import os
 import re
 import orjson
+from core.TableSeriesFlattener import TableSeriesFlattener
 
 
 class SectionAssembler:
-  """@brief Classifies pages into lettered-and-numbered sections (A1, A2, ...), smooths transitions, and exports JSON."""
+  """@brief Classifies pages into lettered-and-numbered sections (A1, A2, ...), smooths transitions, and exports flat JSON."""
 
   def __init__ (self, arg1_config_obj, arg2_volumes_cfg_obj):
     """
-    @brief Initialise SectionAssembler with pipeline and volume/chapter configurations.
+    @brief Initialise SectionAssembler with pipeline configuration, chapter titles, and TableSeriesFlattener.
     @param arg1_config_obj Pipeline configuration dictionary.
     @param arg2_volumes_cfg_obj Volumes and chapters configuration dictionary.
     """
@@ -20,8 +21,8 @@ class SectionAssembler:
 
     #Declare local instance variables
     self.chapters_map = volumes_cfg_obj.get("chapters", {})
+    self.flattener = TableSeriesFlattener(config_obj)
     self.output_cfg = config_obj.get("output", {})
-    self.sym_cfg = config_obj.get("symbols", {})
 
 
   def A_extractPageHeaderMetadata (self, arg1_tokens_array, arg2_portrait_header_tokens_array, arg3_table_blocks_array):
@@ -40,8 +41,6 @@ class SectionAssembler:
     #Declare local instance variables
     book_page = None
     chapter_hint = None
-    has_footnotes_heading = False
-    has_notes_heading = False
     is_continued = False
     raw_section_id = None
     region_header = None
@@ -55,18 +54,18 @@ class SectionAssembler:
     if run_source:
       run_lines = self.clusterSimpleLines(run_source, 16)
       if run_lines:
-        top_run_txt = self.joinProseLineSmart(run_lines[0])
+        top_run_txt = self.joinBannerLine(run_lines[0])
         book_page = self.extractBookPageNumber(run_lines[0])
         chapter_hint = self.matchChapterTitleToLetter(top_run_txt)
 
-    # 2. Inspect top banner region above the first table block (or top 620 px on prose/notes pages)
+    # 2. Inspect top banner region above the first table block (or top 750 px on non-table pages)
     banner_limit_y = min(first_table_y - 2.0, 720.0) if table_blocks_array else 750.0
     banner_toks = [t for t in tokens_array if t["y_centre"] <= banner_limit_y and t.get("text")]
     banner_lines = self.clusterSimpleLines(banner_toks, 15)
 
     for i in range(len(banner_lines)):
       ln = banner_lines[i]
-      ln_txt = self.joinProseLineSmart(ln)
+      ln_txt = self.joinBannerLine(ln)
       if not ln_txt:
         continue
 
@@ -75,10 +74,9 @@ class SectionAssembler:
       if chapter_hint is None and ln[0]["y_centre"] <= 260:
         chapter_hint = self.matchChapterTitleToLetter(ln_txt)
 
-      if re.match(r"^NOTES\b", ln_txt, re.IGNORECASE):
-        has_notes_heading = True
-      if re.match(r"^FOOTNOTES\b", ln_txt, re.IGNORECASE):
-        has_footnotes_heading = True
+      # Never mistake an even-page running header (e.g. '14 International Historical Statistics...') for section 'I4'
+      if ln[0]["y_centre"] <= 230 or "international historical statistics" in ln_txt.lower():
+        continue
 
       if raw_section_id is None:
         parsed_sec = self.parseSectionBannerLine(ln_txt, chapter_hint)
@@ -91,8 +89,8 @@ class SectionAssembler:
           # Append wrapped continuation of section title on immediate next line if above table
           if i + 1 < len(banner_lines):
             nxt_ln = banner_lines[i + 1]
-            if (nxt_ln[0]["y_centre"] - ln[0]["y_centre"]) <= 50:
-              nxt_txt = self.joinProseLineSmart(nxt_ln)
+            if (nxt_ln[0]["y_centre"] - ln[0]["y_centre"]) <= 68:
+              nxt_txt = self.joinBannerLine(nxt_ln)
               if nxt_txt and not re.match(r"^(NOTES|FOOTNOTES|Key|Abbreviations|\d{4}\s*[-–])", nxt_txt, re.IGNORECASE):
                 if section_title and ("(" in section_title and ")" not in section_title or nxt_txt.startswith("(")):
                   section_title = f"{section_title} {nxt_txt}".strip()
@@ -100,22 +98,10 @@ class SectionAssembler:
                   if u_m:
                     unit_str = u_m.group(1).strip()
 
-    # Also scan further down on NOTES/FOOTNOTES pages for explicit headings
-    if not has_notes_heading or not has_footnotes_heading:
-      all_lines = self.clusterSimpleLines([t for t in tokens_array if t.get("text")], 15)
-      for i in range(len(all_lines)):
-        ltxt = self.joinProseLineSmart(all_lines[i])
-        if re.match(r"^NOTES\b", ltxt):
-          has_notes_heading = True
-        elif re.match(r"^FOOTNOTES\b", ltxt):
-          has_footnotes_heading = True
-
     #Return statement
     return {
       "book_page": book_page,
       "chapter_hint": chapter_hint,
-      "has_footnotes_heading": has_footnotes_heading,
-      "has_notes_heading": has_notes_heading,
       "is_continued": is_continued,
       "raw_section_id": raw_section_id,
       "region_header": region_header,
@@ -137,6 +123,10 @@ class SectionAssembler:
       return []
 
     #Declare local instance variables
+    active_chap = None
+    active_num = 0
+    active_sec = None
+    active_sfx = ""
     n_pages = len(pages_array)
     raw_ids = [p["header_meta"].get("raw_section_id") for p in pages_array]
 
@@ -150,17 +140,11 @@ class SectionAssembler:
         repaired_ids[i] = prev_id
 
     # Pass 2: Forward monotonic state machine with lookahead outlier guard
-    active_sec = None
-    active_chap = None
-    active_num = 0
-    active_sfx = ""
-
     for i in range(n_pages):
       cand = repaired_ids[i]
       chap_hint = pages_array[i]["header_meta"].get("chapter_hint")
       is_cont = pages_array[i]["header_meta"].get("is_continued", False)
 
-      # At chapter boundary prose/intro pages (before new chapter's section 1 banner appears), snap forward to new chapter's first section
       if cand is None and active_chap is not None and chap_hint is not None and ord(chap_hint) == ord(active_chap) + 1:
         for x in range(i + 1, min(n_pages, i + 5)):
           if repaired_ids[x] is not None:
@@ -176,7 +160,6 @@ class SectionAssembler:
             if c_let == "A" and 1 <= c_num <= 3:
               active_sec, active_chap, active_num, active_sfx = cand, c_let, c_num, c_sfx
           else:
-            # Check upcoming non-null raw IDs to reject single-page false forward jumps
             upcoming = [repaired_ids[k] for k in range(i + 1, min(n_pages, i + 10)) if repaired_ids[k] is not None][:3]
             reverts_back = False
             if (c_let, c_num) > (active_chap, active_num) and upcoming and cand not in upcoming:
@@ -209,89 +192,11 @@ class SectionAssembler:
     return pages_array
 
 
-  def C_extractNotesAndFootnotes (self, arg1_tokens_array, arg2_table_blocks_array):
+  def C_exportVolumeSections (self, arg1_volume_meta_obj, arg2_page_records_array, arg3_root_dir):
     """
-    @brief Step C: Extract prose NOTES paragraphs and numbered FOOTNOTES entries outside framed table blocks.
-    @param arg1_tokens_array Recognised OCR tokens on the page.
-    @param arg2_table_blocks_array Framed table blocks on the page (excluded from prose extraction).
-    @return Dictionary with notes_lines_array and footnotes_dict.
-    """
-    #Convert from parameters
-    tokens_array = arg1_tokens_array if isinstance(arg1_tokens_array, list) else []
-    table_blocks_array = arg2_table_blocks_array if isinstance(arg2_table_blocks_array, list) else []
-
-    #Declare local instance variables
-    footnotes_dict = {}
-    free_tokens_array = []
-    notes_lines_array = []
-
-    for i in range(len(tokens_array)):
-      t = tokens_array[i]
-      if not t.get("text") or t["y_centre"] <= 215:
-        continue
-      inside_table = False
-      for x in range(len(table_blocks_array)):
-        b = table_blocks_array[x]
-        if (b["x1"] - 15) <= t["x_centre"] <= (b["x2"] + 15) and (b["y_top"] - 65) <= t["y_centre"] <= (b["y_bot"] + 12):
-          inside_table = True
-          break
-      if not inside_table:
-        free_tokens_array.append(t)
-
-    if not free_tokens_array:
-      return {"footnotes": {}, "notes_lines": []}
-
-    lines = self.clusterSimpleLines(free_tokens_array, 15)
-    mode = "preamble"
-    cur_fn_key = None
-
-    for i in range(len(lines)):
-      ln = lines[i]
-      txt = self.joinProseLineSmart(ln)
-      if not txt:
-        continue
-      if self.parseSectionBannerLine(txt, None) is not None:
-        continue
-      if re.match(r"^See\s+pp?\.\s*\d+", txt, re.IGNORECASE):
-        continue
-
-      if re.match(r"^NOTES\b", txt):
-        mode = "notes"
-        rest = re.sub(r"^NOTES\s*:?\s*", "", txt).strip()
-        if rest:
-          notes_lines_array.append(rest)
-        continue
-
-      if re.match(r"^FOOTNOTES\b", txt):
-        mode = "footnotes"
-        cur_fn_key = None
-        continue
-
-      if mode == "footnotes" or (not table_blocks_array and re.match(r"^\d{1,3}\s+[A-Z]", txt)):
-        fn_m = re.match(r"^(\d{1,3})\s*\.?\s+(.+)$", txt)
-        if fn_m and ln[0]["x1"] <= 420:
-          mode = "footnotes"
-          cur_fn_key = fn_m.group(1)
-          footnotes_dict[cur_fn_key] = fn_m.group(2).strip()
-        elif cur_fn_key is not None:
-          footnotes_dict[cur_fn_key] = f"{footnotes_dict[cur_fn_key]} {txt}".strip()
-        else:
-          notes_lines_array.append(txt)
-      elif mode == "notes" or not table_blocks_array:
-        notes_lines_array.append(txt)
-
-    #Return statement
-    return {
-      "footnotes": footnotes_dict,
-      "notes_lines": notes_lines_array
-    }
-
-
-  def D_exportVolumeSections (self, arg1_volume_meta_obj, arg2_page_records_array, arg3_root_dir):
-    """
-    @brief Step D: Aggregate all pages per lettered-and-numbered section (A1, A2, ...) and write JSON files.
+    @brief Step C: Flatten all pages per section (A1, A2, ...) into {<table_key>: {name, subtitle, <place_key>: {...}}} JSON files.
     @param arg1_volume_meta_obj Volume metadata dictionary (volume_id, volume_title, pdf_filename).
-    @param arg2_page_records_array Smoothed page records list for the volume.
+    @param arg2_page_records_array Ordered page records list for the volume.
     @param arg3_root_dir Repository root path.
     @return List of exported section summary dictionaries.
     """
@@ -310,7 +215,6 @@ class SectionAssembler:
 
     os.makedirs(vol_out_dir, exist_ok=True)
 
-    active_region_by_sec = {}
     for i in range(len(pages_array)):
       pr = pages_array[i]
       sec_id = pr.get("resolved_section_id")
@@ -318,40 +222,22 @@ class SectionAssembler:
         continue
 
       h_meta = pr["header_meta"]
-      if h_meta.get("region_header"):
-        active_region_by_sec[sec_id] = h_meta["region_header"]
-
       if sec_id not in sections_store_obj:
         chap_let = sec_id[0]
         sections_order_array.append(sec_id)
         sections_store_obj[sec_id] = {
-          "book_pages": [],
-          "chapter_id": chap_let,
           "chapter_title": self.chapters_map.get(chap_let, ""),
-          "footnotes": {},
-          "notes": [],
           "pdf_pages": [],
           "section_id": sec_id,
           "section_title": h_meta.get("section_title") or "",
-          "source_pdf": vol_meta.get("pdf_filename", ""),
-          "symbols_legend": {
-            "...": "not_available",
-            "--": "less_than_half_unit",
-            "—": "nil"
-          },
           "tables": [],
-          "unit": h_meta.get("unit"),
-          "volume_id": vol_id,
-          "volume_title": vol_meta.get("volume_title", "")
+          "unit": h_meta.get("unit")
         }
 
       sec_obj = sections_store_obj[sec_id]
       if pr["pdf_page"] not in sec_obj["pdf_pages"]:
         sec_obj["pdf_pages"].append(pr["pdf_page"])
-      if h_meta.get("book_page") and h_meta["book_page"] not in sec_obj["book_pages"]:
-        sec_obj["book_pages"].append(h_meta["book_page"])
 
-      # Prefer longest informative section title (excluding '(continued)')
       cand_title = h_meta.get("section_title")
       if cand_title and "continued" not in cand_title.lower():
         if not sec_obj["section_title"] or (len(cand_title) > len(sec_obj["section_title"]) and len(sec_obj["section_title"]) < 18):
@@ -359,42 +245,33 @@ class SectionAssembler:
       if not sec_obj["unit"] and h_meta.get("unit"):
         sec_obj["unit"] = h_meta["unit"]
 
-      cur_region = active_region_by_sec.get(sec_id)
       page_tables = pr.get("tables", [])
       for x in range(len(page_tables)):
-        tbl = page_tables[x]
-        if not tbl.get("region_header") and cur_region:
-          tbl["region_header"] = cur_region
-        tbl["table_index"] = len(sec_obj["tables"])
-        sec_obj["tables"].append(tbl)
-
-      nf_obj = pr.get("notes_and_footnotes", {})
-      if nf_obj.get("notes_lines"):
-        sec_obj["notes"].extend(nf_obj["notes_lines"])
-      if nf_obj.get("footnotes"):
-        for fn_k, fn_v in nf_obj["footnotes"].items():
-          if fn_k in sec_obj["footnotes"]:
-            sec_obj["footnotes"][fn_k] = f"{sec_obj['footnotes'][fn_k]} {fn_v}".strip()
-          else:
-            sec_obj["footnotes"][fn_k] = fn_v
+        sec_obj["tables"].append(page_tables[x])
 
     for i in range(len(sections_order_array)):
       sec_id = sections_order_array[i]
       sec_obj = sections_store_obj[sec_id]
+      doc_obj, stats_obj = self.flattener.D_buildSectionDocument(
+        sec_id,
+        sec_obj["section_title"],
+        sec_obj["unit"],
+        sec_obj["chapter_title"],
+        sec_obj["tables"]
+      )
       out_path = os.path.join(vol_out_dir, f"{sec_id}.json")
-      json_bytes = orjson.dumps(sec_obj, option=orjson.OPT_INDENT_2)
+      json_bytes = orjson.dumps(doc_obj, option=orjson.OPT_INDENT_2)
       with open(out_path, "wb") as local_fh:
         local_fh.write(json_bytes)
 
-      total_cells = sum(len(r["cells"]) for t in sec_obj["tables"] for r in t["rows"])
       exported_summaries_array.append({
-        "cell_count": total_cells,
-        "footnote_count": len(sec_obj["footnotes"]),
+        "data_points": stats_obj["data_points"],
+        "name": stats_obj["name"],
         "output_path": out_path,
         "page_count": len(sec_obj["pdf_pages"]),
+        "place_count": stats_obj["place_count"],
         "section_id": sec_id,
-        "section_title": sec_obj["section_title"],
-        "table_count": len(sec_obj["tables"]),
+        "subtitle": stats_obj["subtitle"],
         "volume_id": vol_id
       })
 
@@ -456,11 +333,11 @@ class SectionAssembler:
     return None
 
 
-  def joinProseLineSmart (self, arg1_line_tokens_array):
+  def joinBannerLine (self, arg1_line_tokens_array):
     """
-    @brief Join tokens on a prose or banner line, healing wide-kerned intra-word splits (e.g. 'Popu' + 'lati' + 'on' -> 'Population').
+    @brief Join left-to-right banner tokens with single spaces while attaching adjacent punctuation cleanly.
     @param arg1_line_tokens_array Left-to-right sorted tokens on one line.
-    @return Clean joined string.
+    @return Clean joined string without false word concatenation.
     """
     #Convert from parameters
     ln = arg1_line_tokens_array
@@ -468,12 +345,6 @@ class SectionAssembler:
     if not ln:
       return ""
 
-    stop_short_words = {
-      "a", "an", "and", "are", "as", "at", "be", "by", "do", "for", "from", "had", "has",
-      "he", "if", "in", "into", "is", "it", "its", "no", "nor", "not", "of", "on", "or",
-      "our", "out", "per", "see", "so", "than", "that", "the", "their", "them", "then",
-      "there", "these", "they", "this", "to", "up", "us", "was", "we", "were", "who", "with"
-    }
     parts_array = []
     for i in range(len(ln)):
       tok = ln[i]
@@ -485,22 +356,8 @@ class SectionAssembler:
         continue
       prev_tok = ln[i - 1]
       prev_txt = parts_array[-1]
-      prev_core = prev_txt.lstrip("([\"'").lower()
-      cur_core = txt.rstrip(")].,:;\"'").lower()
       gap = tok["x1"] - prev_tok["x2"]
-      max_h = max(float(prev_tok.get("h", 20)), float(tok.get("h", 20)))
-      can_heal_alpha = (
-        prev_txt[-1:].isalpha()
-        and txt[:1].islower()
-        and prev_core not in stop_short_words
-        and not (len(prev_core) >= 5 and len(cur_core) >= 5 and max_h <= 25.0)
-      )
-      if gap <= 0.43*max_h and (
-        can_heal_alpha
-        or (prev_txt.isupper() and txt.isupper() and len(prev_txt) + len(txt) <= 10 and prev_core not in stop_short_words)
-        or txt in [",", ".", ":", ";", ")", "]"]
-        or prev_txt.endswith(("(", "["))
-      ):
+      if gap <= 12 and (txt in [",", ".", ":", ";", ")", "]"] or prev_txt.endswith(("(", "["))):
         parts_array[-1] = prev_txt + txt
       else:
         parts_array.append(txt)
@@ -549,7 +406,7 @@ class SectionAssembler:
 
   def parseSectionBannerLine (self, arg1_line_text, arg2_chapter_hint):
     """
-    @brief Parse a section banner line (e.g. 'A2 AFRICA: Population... (in thousands)', 'Al Population...', '12 SOUTH AMERICA: STUDENTS...').
+    @brief Parse a section banner line (e.g. 'A2 AFRICA: Population... (in thousands)', '12 SOUTH AMERICA: STUDENTS...').
     @param arg1_line_text Joined banner line string.
     @param arg2_chapter_hint Optional chapter letter A..J from running header.
     @return Dictionary with section_id, region_header, section_title, unit, is_continued, or None.
@@ -566,13 +423,11 @@ class SectionAssembler:
     raw_num = m.group(2)
     rest = m.group(3).strip()
 
-    # Normalise OCR confusions in chapter letter ('1'/'l' -> 'I' for Education) and digits ('l'/'i'/'I' -> '1')
     if raw_let in ["1", "l", "I"]:
       norm_let = "I"
     else:
       norm_let = raw_let.upper()
 
-    # Extract trailing suffix 'a'/'b' (e.g. A6a, G5a) before normalising digits
     suffix = ""
     if raw_num[-1:].lower() in ["a", "b"] and len(raw_num) >= 2:
       suffix = raw_num[-1:].lower()
@@ -587,13 +442,11 @@ class SectionAssembler:
     if sec_num < 1 or sec_num > 30:
       return None
 
-    # Guard against years like '1950 ...' mistaken as 'I9...'
     if raw_let == "1" and chapter_hint not in ["I", "H", None]:
       return None
     if norm_let == "I" and sec_num > 4:
       return None
 
-    # Require rest of banner to look like a title or '(continued)', not pure numeric data cells
     if re.match(r"^[\d,.\s\-–—]+$", rest):
       return None
 
@@ -636,4 +489,3 @@ class SectionAssembler:
 
     #Return statement
     return (m.group(1), int(m.group(2)), m.group(3))
-

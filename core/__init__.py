@@ -10,6 +10,7 @@ __all__ = [
   "PagePreprocessor",
   "SectionAssembler",
   "TableDigitiserPipeline",
+  "TableSeriesFlattener",
   "TableStructureReconstructor",
   "TokenSegmenter"
 ]

@@ -457,6 +457,17 @@ class BraceAndCellResolver:
         prev_tok = tokens_array[i - 1]
         prev_txt = parts_array[-1]
         gap = t["x1"] - prev_tok["x2"]
+        is_detached_script = (
+          prev_txt[-1:].isdigit()
+          and txt.isdigit()
+          and len(txt) <= 2
+          and t.get("h", 99) <= 0.78*prev_tok.get("h", 24)
+          and (t.get("y2", 0) <= prev_tok.get("y2", 0) - 4.0 or t.get("y1", 0) >= prev_tok.get("y1", 0) + 4.0)
+        )
+        if is_detached_script:
+          if txt not in footnotes_array:
+            footnotes_array.append(txt)
+          continue
         if gap <= 24 and (
           prev_txt.endswith((",", ".", "[", "+", "-"))
           or txt.startswith((",", ".", "]"))
@@ -541,7 +552,20 @@ class BraceAndCellResolver:
     if not txt:
       return ("", [])
 
-    txt = re.sub(r"\b([A-Z]{4,})\s+([A-Z])\b", r"\1\2", txt)
+    slash_m = re.match(r"^((?:17|18|19|20)(\d{2}))/(\d{2,4})$", txt)
+    if slash_m:
+      full_yr = slash_m.group(1)
+      yy = int(slash_m.group(2))
+      rhs = slash_m.group(3)
+      if len(rhs) == 2:
+        r2 = int(rhs)
+        valid_two_digit = (yy < r2 <= yy + 15) or (yy >= 90 and r2 <= 10)
+        if not valid_two_digit:
+          d1 = int(rhs[0])
+          if (yy%10) < d1 <= (yy%10) + 5 or (yy%10 == 9 and d1 == 0):
+            return (f"{full_yr}/{rhs[0]}", [rhs[1:]])
+      elif len(rhs) == 3 or (len(rhs) == 4 and not (1700 <= int(rhs) <= 2025)):
+        return (f"{full_yr}/{rhs[0]}", [rhs[1:]])
 
     yr_m = re.match(r"^((?:17|18|19|20)\d{2}(?:/\d{1,2})?)(\d{1,2}(?:,\d{1,2})*)$", txt)
     if yr_m:

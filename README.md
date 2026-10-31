@@ -5,7 +5,7 @@ Reusable Computer Vision and GPU OCR pipeline for digitising B.R. Mitchell's *In
 ## Directory Structure
 
 - `common/digitiser/` — JSON5 pipeline and volume configurations (`pipeline_config.json5`, `volumes_config.json5`).
-- `core/` — Modular Python CV + CUDA OCR pipeline (`PagePreprocessor`, `GraphicalElementDetector`, `TokenSegmenter`, `GpuOcrEngine`, `BraceAndCellResolver`, `TableStructureReconstructor`, `SectionAssembler`, `TableDigitiserPipeline` and `cli_runner.py`).
+- `core/` — Modular Python CV + CUDA EasyOCR pipeline (`PagePreprocessor`, `GraphicalElementDetector`, `TokenSegmenter`, `GpuOcrEngine`, `BraceAndCellResolver`, `TableStructureReconstructor`, `TableSeriesFlattener`, `SectionAssembler`, `TableDigitiserPipeline` and `cli_runner.py`).
 - `docs/` — Doxygen configuration (`Doxyfile`), pipeline architecture, JSON schema (`architecture_and_schema.md`) and generated API reference (`api_reference.md`).
 - `localisation/` — CLI localisation strings in EN-GB, FR and DE (`en_gb.json5`, `fr.json5`, `de.json5`).
 - `output/json/` — Digitised per-section JSON files namespaced by volume (`africa_asia_oceania/`, `americas/`, `europe/`) plus `manifest.json`.

@@ -26,7 +26,7 @@ def buildArgumentParser ():
   parser.add_argument("--end-page", type=int, default=None, help="Optional 0-based exclusive end PDF page.")
   parser.add_argument("--workers", type=int, default=None, help="Override number of parallel CPU CV worker processes.")
   parser.add_argument("--batch-size", type=int, default=None, help="Override page batch size per GPU OCR flush.")
-  parser.add_argument("--arch", type=str, default=None, help="Override DocTR recognition architecture (parseq or crnn_vgg16_bn).")
+  parser.add_argument("--arch", type=str, default=None, help="Override EasyOCR recognition network name (default: english_g2).")
   parser.add_argument("--locale", type=str, default="en_gb", choices=["en_gb", "fr", "de"], help="CLI message locale.")
   parser.add_argument("--no-manifest", action="store_true", help="Skip writing top-level output/json/manifest.json.")
 

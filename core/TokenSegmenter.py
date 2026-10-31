@@ -6,7 +6,7 @@ import numpy as np
 
 
 class TokenSegmenter:
-  """@brief Segments cleaned page masks into word/cell tokens while separating superscripts and subscripts prior to OCR."""
+  """@brief Segments cleaned page masks into word/cell tokens while masking superscripts and subscripts prior to OCR."""
 
   def __init__ (self, arg1_config_obj):
     """
@@ -47,21 +47,23 @@ class TokenSegmenter:
     return clean_bw
 
 
-  def B_extractGlyphsAndWords (self, arg1_clean_bw):
+  def B_extractGlyphsAndWords (self, arg1_clean_bw, arg2_max_y=None):
     """
     @brief Step B: Filter dust, extract glyph components, and group horizontally adjacent characters into word tokens.
     @param arg1_clean_bw Binary mask with graphical lines and braces removed.
-    @return Dictionary containing glyphs_array, glyph_labels, and word_boxes_array.
+    @param arg2_max_y Optional vertical cutoff y coordinate to skip prose footnote tails below tables.
+    @return Dictionary containing filtered_bw, glyph_labels, glyphs, and word_boxes.
     """
     #Convert from parameters
     clean_bw = arg1_clean_bw
+    max_y = float(arg2_max_y) if arg2_max_y is not None else None
 
     #Declare local instance variables
-    close_kx, close_ky = self.tok_cfg.get("word_close_kernel", [9, 3])
+    close_kx, close_ky = self.tok_cfg.get("word_close_kernel", [14, 3])
     dust_max_area = int(self.tok_cfg.get("dust_max_area_px", 3))
     filtered_bw = None
     glyphs_array = []
-    max_tok_w = int(self.tok_cfg.get("max_token_width_px", 270))
+    max_tok_w = int(self.tok_cfg.get("max_token_width_px", 800))
     min_tok_h = int(self.tok_cfg.get("min_token_height_px", 3))
     min_tok_w = int(self.tok_cfg.get("min_token_width_px", 4))
     word_boxes_array = []
@@ -74,8 +76,11 @@ class TokenSegmenter:
         "word_boxes": []
       }
 
-    num_g, glyph_labels, g_stats, _ = cv2.connectedComponentsWithStats(clean_bw)
     filtered_bw = clean_bw.copy()
+    if max_y is not None and 0 < int(max_y) < filtered_bw.shape[0]:
+      filtered_bw[int(max_y):, :] = 0
+
+    num_g, glyph_labels, g_stats, _ = cv2.connectedComponentsWithStats(filtered_bw)
 
     for i in range(1, num_g):
       gx = int(g_stats[i, cv2.CC_STAT_LEFT])
@@ -117,7 +122,7 @@ class TokenSegmenter:
       if ww <= 8 and wh <= 9:
         continue
       if ww > max_tok_w:
-        split_sub_boxes = self.splitWideTokenBox(filtered_bw, wx, wy, ww, wh, max_tok_w)
+        split_sub_boxes = self.splitWideTokenBox(filtered_bw, wx, wy, ww, wh)
         word_boxes_array.extend(split_sub_boxes)
       else:
         word_boxes_array.append((wx, wy, ww, wh))
@@ -131,15 +136,15 @@ class TokenSegmenter:
     }
 
 
-  def C_classifySymbolsAndSplitScripts (self, arg1_rgb_img, arg2_extracted_obj):
+  def C_classifySymbolsAndSplitScripts (self, arg1_page_img, arg2_extracted_obj):
     """
-    @brief Step C: Pre-classify geometric symbols (..., --, —) and split superscripts/subscripts into separate OCR crops.
-    @param arg1_rgb_img Deskewed RGB page image.
+    @brief Step C: Pre-classify geometric symbols (..., --, —) and mask superscripts/subscripts out of OCR crops.
+    @param arg1_page_img Deskewed greyscale or RGB page image.
     @param arg2_extracted_obj Output dictionary from Step B.
-    @return Dictionary with tokens_array and ocr_jobs_array.
+    @return Dictionary with tokens and ocr_jobs.
     """
     #Convert from parameters
-    rgb_img = arg1_rgb_img
+    page_img = arg1_page_img
     extracted_obj = arg2_extracted_obj if isinstance(arg2_extracted_obj, dict) else {}
 
     #Declare local instance variables
@@ -149,26 +154,33 @@ class TokenSegmenter:
     dd_min_w = int(self.tok_cfg.get("double_dash_min_width_px", 16))
     el_dot_max = int(self.tok_cfg.get("ellipsis_dot_max_dim_px", 12))
     el_max_h = int(self.tok_cfg.get("ellipsis_max_height_px", 14))
-    el_max_w = int(self.tok_cfg.get("ellipsis_max_width_px", 62))
+    el_max_w = int(self.tok_cfg.get("ellipsis_max_width_px", 68))
     el_min_w = int(self.tok_cfg.get("ellipsis_min_width_px", 15))
     em_max_w = int(self.tok_cfg.get("em_dash_max_width_px", 54))
     em_min_w = int(self.tok_cfg.get("em_dash_min_width_px", 19))
     filtered_bw = extracted_obj.get("filtered_bw")
     glyph_labels = extracted_obj.get("glyph_labels")
     glyphs_array = extracted_obj.get("glyphs", [])
+    gray_img = None
     ocr_jobs_array = []
-    pad = int(self.tok_cfg.get("crop_padding_px", 4))
+    pad = int(self.tok_cfg.get("crop_padding_px", 6))
+    recognise_fn = bool(self.tok_cfg.get("recognise_footnotes", False))
     row_buckets_obj = {}
     tokens_array = []
     word_boxes_array = extracted_obj.get("word_boxes", [])
 
-    if rgb_img is None or filtered_bw is None:
+    if page_img is None or filtered_bw is None:
       return {
         "ocr_jobs": [],
         "tokens": []
       }
 
-    page_h, page_w = rgb_img.shape[:2]
+    if page_img.ndim == 3:
+      gray_img = cv2.cvtColor(page_img, cv2.COLOR_RGB2GRAY)
+    else:
+      gray_img = page_img
+
+    page_h, page_w = gray_img.shape[:2]
     for i in range(len(glyphs_array)):
       g = glyphs_array[i]
       b0 = g["top"]//band_size
@@ -257,7 +269,7 @@ class TokenSegmenter:
           })
           continue
 
-      # 4. Check trailing superscript or subscript suffix (e.g. 13,934_64, 1990^69,71, MOROCCO^1, 14'63)
+      # 4. Mask trailing superscript or subscript suffix (e.g. 13,934_64, 1990^69,71, MOROCCO^1, 14'63)
       split_res = self.detectTrailingScriptSuffix(tok_glyphs)
       tok_idx = len(tokens_array)
 
@@ -272,39 +284,16 @@ class TokenSegmenter:
         cy0 = max(0, my1 - pad)
         cx1 = min(page_w, mx2 + pad)
         cy1 = min(page_h, my2 + pad)
-        main_crop = rgb_img[cy0:cy1, cx0:cx1].copy()
-        bg_colour = np.median(main_crop, axis=(0, 1)).astype(np.uint8)
+        main_crop = gray_img[cy0:cy1, cx0:cx1].copy()
+        bg_val = int(np.median(main_crop))
 
-        # Mask script glyph pixels out of main_crop so OCR cannot concatenate them onto the main number
+        # Mask script glyph pixels out of main_crop so OCR cannot concatenate them onto the main number or label
         lbl_patch = glyph_labels[cy0:cy1, cx0:cx1]
         script_ids = {g["label_id"] for g in script_glyphs}
         script_mask = np.isin(lbl_patch, list(script_ids)).astype(np.uint8)*255
         if np.any(script_mask):
           script_mask = cv2.dilate(script_mask, np.ones((3, 3), np.uint8))
-          main_crop[script_mask > 0] = bg_colour
-
-        sx1 = min(g["x"] for g in script_glyphs)
-        sy1 = min(g["top"] for g in script_glyphs)
-        sx2 = max(g["right"] for g in script_glyphs)
-        sy2 = max(g["bot"] for g in script_glyphs)
-        scx0 = max(0, sx1 - pad)
-        scy0 = max(0, sy1 - pad)
-        scx1 = min(page_w, sx2 + pad)
-        scy1 = min(page_h, sy2 + pad)
-        script_crop = rgb_img[scy0:scy1, scx0:scx1].copy()
-        lbl_spatch = glyph_labels[scy0:scy1, scx0:scx1]
-        main_ids = {g["label_id"] for g in main_glyphs}
-        main_mask = np.isin(lbl_spatch, list(main_ids)).astype(np.uint8)*255
-        if np.any(main_mask):
-          main_mask = cv2.dilate(main_mask, np.ones((3, 3), np.uint8))
-          s_bg = np.median(script_crop, axis=(0, 1)).astype(np.uint8)
-          script_crop[main_mask > 0] = s_bg
-        if script_crop.shape[0] > 0 and script_crop.shape[1] > 0:
-          script_crop = cv2.resize(
-            script_crop,
-            (max(8, int(script_crop.shape[1]*1.6)), max(12, int(script_crop.shape[0]*1.6))),
-            interpolation=cv2.INTER_CUBIC
-          )
+          main_crop[script_mask > 0] = bg_val
 
         tokens_array.append({
           "conf": 0.0,
@@ -323,13 +312,37 @@ class TokenSegmenter:
           "y_centre": 0.5*(my1 + my2)
         })
         ocr_jobs_array.append({"crop": main_crop, "role": "main", "token_index": tok_idx})
-        ocr_jobs_array.append({"crop": script_crop, "role": "script", "token_index": tok_idx})
+
+        if recognise_fn:
+          sx1 = min(g["x"] for g in script_glyphs)
+          sy1 = min(g["top"] for g in script_glyphs)
+          sx2 = max(g["right"] for g in script_glyphs)
+          sy2 = max(g["bot"] for g in script_glyphs)
+          scx0 = max(0, sx1 - pad)
+          scy0 = max(0, sy1 - pad)
+          scx1 = min(page_w, sx2 + pad)
+          scy1 = min(page_h, sy2 + pad)
+          script_crop = gray_img[scy0:scy1, scx0:scx1].copy()
+          lbl_spatch = glyph_labels[scy0:scy1, scx0:scx1]
+          main_ids = {g["label_id"] for g in main_glyphs}
+          main_mask = np.isin(lbl_spatch, list(main_ids)).astype(np.uint8)*255
+          if np.any(main_mask):
+            main_mask = cv2.dilate(main_mask, np.ones((3, 3), np.uint8))
+            s_bg = int(np.median(script_crop))
+            script_crop[main_mask > 0] = s_bg
+          if script_crop.shape[0] > 0 and script_crop.shape[1] > 0:
+            script_crop = cv2.resize(
+              script_crop,
+              (max(8, int(script_crop.shape[1]*1.6)), max(12, int(script_crop.shape[0]*1.6))),
+              interpolation=cv2.INTER_CUBIC
+            )
+          ocr_jobs_array.append({"crop": script_crop, "role": "script", "token_index": tok_idx})
       else:
         cx0 = max(0, wx - pad)
         cy0 = max(0, wy - pad)
         cx1 = min(page_w, wx2 + pad)
         cy1 = min(page_h, wy2 + pad)
-        crop = rgb_img[cy0:cy1, cx0:cx1]
+        crop = gray_img[cy0:cy1, cx0:cx1]
         tokens_array.append({
           "conf": 0.0,
           "footnotes": [],
@@ -355,22 +368,24 @@ class TokenSegmenter:
     }
 
 
-  def D_segmentPageTokens (self, arg1_rgb_img, arg2_bw_mask, arg3_erase_boxes_array):
+  def D_segmentPageTokens (self, arg1_page_img, arg2_bw_mask, arg3_erase_boxes_array, arg4_max_y=None):
     """
     @brief Step D: Run complete token segmentation pipeline (A -> B -> C) on a preprocessed page.
-    @param arg1_rgb_img Deskewed RGB page image.
+    @param arg1_page_img Deskewed greyscale or RGB page image.
     @param arg2_bw_mask Deskewed binary foreground mask.
     @param arg3_erase_boxes_array Graphical element boxes to mask out prior to glyph extraction.
+    @param arg4_max_y Optional vertical cutoff y coordinate to skip prose footnote regions below tables.
     @return Dictionary containing tokens and ocr_jobs.
     """
     #Convert from parameters
-    rgb_img = arg1_rgb_img
+    page_img = arg1_page_img
     bw_mask = arg2_bw_mask
     erase_boxes_array = arg3_erase_boxes_array
+    max_y = arg4_max_y
 
     clean_bw = self.A_eraseGraphicalPrimitives(bw_mask, erase_boxes_array)
-    extracted_obj = self.B_extractGlyphsAndWords(clean_bw)
-    segmented_obj = self.C_classifySymbolsAndSplitScripts(rgb_img, extracted_obj)
+    extracted_obj = self.B_extractGlyphsAndWords(clean_bw, max_y)
+    segmented_obj = self.C_classifySymbolsAndSplitScripts(page_img, extracted_obj)
 
     #Return statement
     return segmented_obj
@@ -389,21 +404,23 @@ class TokenSegmenter:
       return None
 
     #Declare local instance variables
-    max_ratio = float(self.tok_cfg.get("script_max_height_ratio", 0.80))
+    max_ratio = float(self.tok_cfg.get("script_max_height_ratio", 0.78))
     punct_max_h = int(self.tok_cfg.get("punctuation_max_height_px", 12))
-    sub_drop = float(self.tok_cfg.get("subscript_min_drop_px", 2.5))
-    sub_top_drop = float(self.tok_cfg.get("subscript_min_top_drop_px", 4.5))
-    sup_raise = float(self.tok_cfg.get("superscript_min_raise_px", 3.2))
+    sub_drop = float(self.tok_cfg.get("subscript_min_drop_px", 3.5))
+    sub_top_drop = float(self.tok_cfg.get("subscript_min_top_drop_px", 6.0))
+    sup_raise = float(self.tok_cfg.get("superscript_min_raise_px", 5.0))
 
-    tall_glyphs = [g for g in tok_glyphs_array if 20 <= g["h"] <= 30]
-    if not tall_glyphs:
-      tall_glyphs = [g for g in tok_glyphs_array if g["h"] >= 20]
-    if not tall_glyphs:
+    base_glyphs = [g for g in tok_glyphs_array if 20 <= g["h"] <= 38]
+    if not base_glyphs:
+      base_glyphs = [g for g in tok_glyphs_array if g["h"] >= 20]
+    if not base_glyphs:
       return None
 
-    main_h = float(np.median([g["h"] for g in tall_glyphs]))
-    main_top = float(np.median([g["top"] for g in tall_glyphs]))
-    main_bot = float(np.median([g["bot"] for g in tall_glyphs]))
+    cap_glyphs = [g for g in base_glyphs if g["h"] >= 25]
+    ref_glyphs = cap_glyphs if cap_glyphs else base_glyphs
+    main_h = float(np.median([g["h"] for g in ref_glyphs]))
+    main_top = float(np.median([g["top"] for g in ref_glyphs]))
+    main_bot = float(np.median([g["bot"] for g in base_glyphs]))
 
     # Walk backwards from the right end to find the longest valid superscript or subscript suffix
     sup_start = None
@@ -426,7 +443,7 @@ class TokenSegmenter:
     if sup_start is not None:
       main_part = tok_glyphs_array[:sup_start]
       script_part = tok_glyphs_array[sup_start:]
-      if any(g["h"] >= 20 for g in main_part) and any(g["h"] >= 11 and g["w"] >= 4 for g in script_part):
+      if any(g["h"] >= 20 for g in main_part) and any(g["h"] >= 11 and (g["w"] >= 4 or (g["w"] >= 3 and g["h"] >= 14)) for g in script_part):
         if len(script_part) == 1 and script_part[0]["w"] <= 6 and script_part[0]["h"] <= 12:
           return None
         return (main_part, script_part, "superscript")
@@ -459,15 +476,14 @@ class TokenSegmenter:
     return None
 
 
-  def splitWideTokenBox (self, arg1_bw_mask, arg2_wx, arg3_wy, arg4_ww, arg5_wh, arg6_max_w):
+  def splitWideTokenBox (self, arg1_bw_mask, arg2_wx, arg3_wy, arg4_ww, arg5_wh):
     """
-    @brief Split an overly wide merged word box at vertical projection whitespace valleys.
+    @brief Split an unusually wide multi-column box only at genuine wide whitespace gaps, never mid-word.
     @param arg1_bw_mask Dust-filtered binary mask.
     @param arg2_wx Left x of box.
     @param arg3_wy Top y of box.
     @param arg4_ww Width of box.
     @param arg5_wh Height of box.
-    @param arg6_max_w Maximum allowed token width in pixels.
     @return List of (x, y, w, h) sub-boxes.
     """
     #Convert from parameters
@@ -476,15 +492,17 @@ class TokenSegmenter:
     wy = int(arg3_wy)
     ww = int(arg4_ww)
     wh = int(arg5_wh)
-    max_w = int(arg6_max_w)
 
     #Declare local instance variables
-    patch = bw_mask[wy:wy + wh, wx:wx + ww]
-    col_sums = np.sum(patch > 0, axis=0)
+    col_sums = None
     cuts_array = [0]
     in_zero = False
+    min_gap = int(self.tok_cfg.get("wide_split_min_gap_px", 18))
+    patch = bw_mask[wy:wy + wh, wx:wx + ww]
+    sub_boxes_array = []
     zero_start = 0
 
+    col_sums = np.sum(patch > 0, axis=0)
     for i in range(ww):
       if col_sums[i] == 0:
         if not in_zero:
@@ -493,41 +511,24 @@ class TokenSegmenter:
       else:
         if in_zero:
           zero_len = i - zero_start
-          if zero_len >= 6 and (zero_start - cuts_array[-1]) >= 22:
+          if zero_len >= min_gap and (zero_start - cuts_array[-1]) >= 24:
             cuts_array.append((zero_start + i)//2)
           in_zero = False
 
     cuts_array.append(ww)
-    sub_boxes_array = []
-
     for i in range(len(cuts_array) - 1):
-      sx0 = cuts_array[i]
-      sx1 = cuts_array[i + 1]
-      if sx1 - sx0 < 3:
+      gx0 = cuts_array[i]
+      gx1 = cuts_array[i + 1]
+      if gx1 - gx0 < 4:
         continue
-      # Further subdivide if still wider than max_w*1.4
-      if sx1 - sx0 > int(max_w*1.4):
-        mid = (sx0 + sx1)//2
-        search_l = max(sx0 + 15, mid - 45)
-        search_r = min(sx1 - 15, mid + 45)
-        if search_r > search_l:
-          best_cut = search_l + int(np.argmin(col_sums[search_l:search_r]))
-          segs = [(sx0, best_cut), (best_cut, sx1)]
-        else:
-          segs = [(sx0, sx1)]
-      else:
-        segs = [(sx0, sx1)]
-
-      for x in range(len(segs)):
-        gx0, gx1 = segs[x]
-        sub_p = patch[:, gx0:gx1]
-        ys, xs = np.where(sub_p > 0)
-        if len(xs) > 0:
-          bx = wx + gx0 + int(xs.min())
-          by = wy + int(ys.min())
-          bw_s = int(xs.max() - xs.min()) + 1
-          bh_s = int(ys.max() - ys.min()) + 1
-          sub_boxes_array.append((bx, by, bw_s, bh_s))
+      sub_p = patch[:, gx0:gx1]
+      ys, xs = np.where(sub_p > 0)
+      if len(xs) > 0:
+        bx = wx + gx0 + int(xs.min())
+        by = wy + int(ys.min())
+        bw_s = int(xs.max() - xs.min()) + 1
+        bh_s = int(ys.max() - ys.min()) + 1
+        sub_boxes_array.append((bx, by, bw_s, bh_s))
 
     #Return statement
     return sub_boxes_array if sub_boxes_array else [(wx, wy, ww, wh)]

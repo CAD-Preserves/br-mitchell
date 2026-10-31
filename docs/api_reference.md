@@ -29,14 +29,15 @@
 
 ## `GpuOcrEngine.py`
 
-@brief High-throughput CUDA fp16 Optical Character Recognition engine wrapping DocTR PARSeq/CRNN.
+@brief High-throughput CUDA EasyOCR recognition engine with width-bucketed GPU batching.
 
-* **`GpuOcrEngine`** ÔÇö @brief Batched GPU word/token recogniser with post-OCR footnote and numeric token normalisation.
-* **`A_loadModel`** ÔÇö @brief Step A: Load pretrained DocTR recognition model onto target device (fp16 on CUDA when available).
-* **`B_recogniseCropsBatch`** ÔÇö @brief Step B: Execute batched neural text recognition across an arbitrary list of RGB token crops.
-* **`C_populatePageTokens`** ÔÇö @brief Step C: Batch-recognise all OCR jobs across multiple segmented pages in one GPU call and populate tokens.
-* **`D_normaliseSingleToken`** ÔÇö @brief Step D: Normalise OCR text, attach script footnotes, and repair residual comma-group superscript merges.
+* **`GpuOcrEngine`** ÔÇö @brief Batched GPU EasyOCR recogniser with contrast-retry fallback and post-OCR token normalisation.
+* **`A_loadModel`** ÔÇö @brief Step A: Load pretrained EasyOCR recognition network onto target device without unused CRAFT weights.
+* **`B_recogniseCropsBatch`** ÔÇö @brief Step B: Execute width-bucketed GPU EasyOCR recognition across an arbitrary list of token crops.
+* **`C_populatePageTokens`** ÔÇö @brief Step C: Batch-recognise all OCR jobs across multiple segmented pages and populate tokens.
+* **`D_normaliseSingleToken`** ÔÇö @brief Step D: Normalise OCR text, collapse spurious whitespace, and repair residual comma-group superscript merges.
 * **`parseScriptFootnoteString`** ÔÇö @brief Clean a recognised superscript/subscript string into individual footnote/date markers.
+* **`runBucketPass`** ÔÇö @brief Resize, right-border-pad, and run batched EasyOCR CRNN greedy decoding for one width bucket.
 
 ## `GraphicalElementDetector.py`
 
@@ -66,18 +67,17 @@
 
 ## `SectionAssembler.py`
 
-@brief Assembles page-level tables, section banners, notes, and footnotes into per-section JSON files.
+@brief Assembles page-level tables and section banners into simplified per-section JSON files.
 
-* **`SectionAssembler`** ÔÇö @brief Classifies pages into lettered-and-numbered sections (A1, A2, ...), smooths transitions, and exports JSON.
+* **`SectionAssembler`** ÔÇö @brief Classifies pages into lettered-and-numbered sections (A1, A2, ...), smooths transitions, and exports flat JSON.
 * **`A_extractPageHeaderMetadata`** ÔÇö @brief Step A: Parse running header, book page number, chapter hint, and explicit section banner from page tokens.
 * **`B_smoothSectionAssignments`** ÔÇö @brief Step B: Resolve missing/noisy section IDs across volume pages using chapter monotonicity and lookahead smoothing.
-* **`C_extractNotesAndFootnotes`** ÔÇö @brief Step C: Extract prose NOTES paragraphs and numbered FOOTNOTES entries outside framed table blocks.
-* **`D_exportVolumeSections`** ÔÇö @brief Step D: Aggregate all pages per lettered-and-numbered section (A1, A2, ...) and write JSON files.
+* **`C_exportVolumeSections`** ÔÇö @brief Step C: Flatten all pages per section (A1, A2, ...) into {<table_key>: {name, subtitle, <place_key>: {...}}} JSON files.
 * **`clusterSimpleLines`** ÔÇö @brief Cluster tokens vertically into reading-order lines sorted left-to-right.
 * **`extractBookPageNumber`** ÔÇö @brief Extract printed book page number from either outer margin of the running header line.
-* **`joinProseLineSmart`** ÔÇö @brief Join tokens on a prose or banner line, healing wide-kerned intra-word splits (e.g. 'Popu' + 'lati' + 'on' -> 'Population').
+* **`joinBannerLine`** ÔÇö @brief Join left-to-right banner tokens with single spaces while attaching adjacent punctuation cleanly.
 * **`matchChapterTitleToLetter`** ÔÇö @brief Map a running header string (e.g. 'Agriculture', 'Education') to its canonical chapter letter A..J.
-* **`parseSectionBannerLine`** ÔÇö @brief Parse a section banner line (e.g. 'A2 AFRICA: Population... (in thousands)', 'Al Population...', '12 SOUTH AMERICA: STUDENTS...').
+* **`parseSectionBannerLine`** ÔÇö @brief Parse a section banner line (e.g. 'A2 AFRICA: Population... (in thousands)', '12 SOUTH AMERICA: STUDENTS...').
 * **`splitSectionCode`** ÔÇö @brief Split a canonical section ID like 'A6a' into ('A', 6, 'a').
 
 ## `TableDigitiserPipeline.py`
@@ -89,6 +89,31 @@
 * **`B_resolveTargetVolumes`** ÔÇö @brief Step B: Resolve configured BR Mitchell volumes or arbitrary user-supplied PDF file paths.
 * **`C_processVolumePages`** ÔÇö @brief Step C: Run double-buffered multiprocessing CPU CV + batched GPU OCR + table reconstruction across a volume.
 * **`D_runPipeline`** ÔÇö @brief Step D: Execute full digitisation pipeline across resolved volume(s) and write per-section JSON + manifest.
+
+## `TableSeriesFlattener.py`
+
+@brief Flattens reconstructed sub-tables into canonical per-section {name, subtitle, <place_key>: {<indicator>_<year>: number}} JSON.
+
+* **`TableSeriesFlattener`** ÔÇö @brief Maps multi-layout historical tables into clean snake_case place and indicator_year numeric dictionaries.
+* **`A_parseSectionTitleAndSubtitle`** ÔÇö @brief Step A: Split a raw section banner title into clean human-readable name and subtitle strings.
+* **`B_deriveDefaultIndicator`** ÔÇö @brief Step B: Derive a concise snake_case indicator slug for single-series tables (e.g. 'population', 'electric_energy').
+* **`C_flattenTableIntoPlaces`** ÔÇö @brief Step C: Populate places_obj with {<place_key>: {<indicator>_<year>: number}} entries from one reconstructed table.
+* **`D_buildSectionDocument`** ÔÇö @brief Step D: Build the complete per-section JSON dictionary {<table_key>: {name, subtitle, <place_key>: {...}}}.
+* **`analyseColumnHeader`** ÔÇö @brief Partition a column's header_path segments into years, semantic place/indicator labels, and ignored unit/index lines.
+* **`cleanProseSpacing`** ÔÇö @brief Normalise whitespace and heal common OCR kerning artefacts such as '(inthousands)' -> '(in thousands)'.
+* **`extractPlaceOverrideFromQualifier`** ÔÇö @brief Detect mid-table sovereign/entity renames over a country column (e.g. 'West Germany' beneath 'Germany').
+* **`extractQualifierIndicatorSlug`** ÔÇö @brief Convert a sub-entity/scope qualifier (e.g. 'French Zone') into an indicator prefix, ignoring base-year or 'Whole Country' tags.
+* **`extractSubtablePlaceKey`** ÔÇö @brief Extract a valid snake_case place key from a sub-table heading, stripping '(continued)' and rejecting banners/units.
+* **`formatRowBandSlug`** ÔÇö @brief Format a curly-brace spanned group of row labels (e.g. ['10-14', '15-19'] -> '10_19', ['60-64', ..., '80 and over'] -> '60_and_over').
+* **`formatYearSpanSlug`** ÔÇö @brief Format braced multi-year row labels (e.g. ['1834', '1835'] -> '1834_1835') into a compact year suffix.
+* **`isAgeOrBandLabel`** ÔÇö @brief Check whether a row stub label represents a demographic age band rather than a geographic place.
+* **`isUnitOrIndexPhrase`** ÔÇö @brief Check whether a header/qualifier phrase is a unit description ('million pounds') or index base ('1913 = 100').
+* **`isYearOrRange`** ÔÇö @brief Check whether a string represents a historical year, slash census year ('1951/2'), or year range ('1867-77').
+* **`normaliseHeadingCase`** ÔÇö @brief Convert ALL-CAPS banner titles to readable Title Case while preserving already mixed-case headings and acronyms.
+* **`resolveMultiCountryColumnPlaces`** ÔÇö @brief Map data columns to country keys when multiple horizontally separated country headings sit above one shared table.
+* **`slugifyPlace`** ÔÇö @brief Convert a country, province, or city name into canonical snake_case (e.g. 'U.K.' -> 'uk', 'Guinea Bissau' -> 'guinea_bissau').
+* **`slugifyYear`** ÔÇö @brief Normalise a year or slash/range year into clean snake_case (e.g. '1951/2' -> '1951_2').
+* **`toSnakeSlug`** ÔÇö @brief Transliterate Latin diacritics to ASCII and convert any phrase into clean lowercase snake_case.
 
 ## `TableStructureReconstructor.py`
 
@@ -112,13 +137,13 @@
 
 @brief Connected-component word tokeniser, statistical symbol classifier, and superscript/subscript splitter.
 
-* **`TokenSegmenter`** ÔÇö @brief Segments cleaned page masks into word/cell tokens while separating superscripts and subscripts prior to OCR.
+* **`TokenSegmenter`** ÔÇö @brief Segments cleaned page masks into word/cell tokens while masking superscripts and subscripts prior to OCR.
 * **`A_eraseGraphicalPrimitives`** ÔÇö @brief Step A: Mask out detected rules, cmidrules, underlines, and curly braces from the foreground binary image.
 * **`B_extractGlyphsAndWords`** ÔÇö @brief Step B: Filter dust, extract glyph components, and group horizontally adjacent characters into word tokens.
-* **`C_classifySymbolsAndSplitScripts`** ÔÇö @brief Step C: Pre-classify geometric symbols (..., --, —) and split superscripts/subscripts into separate OCR crops.
+* **`C_classifySymbolsAndSplitScripts`** ÔÇö @brief Step C: Pre-classify geometric symbols (..., --, —) and mask superscripts/subscripts out of OCR crops.
 * **`D_segmentPageTokens`** ÔÇö @brief Step D: Run complete token segmentation pipeline (A -> B -> C) on a preprocessed page.
 * **`detectTrailingScriptSuffix`** ÔÇö @brief Detect whether a multi-glyph token ends with a smaller raised (superscript) or lowered (subscript) suffix.
-* **`splitWideTokenBox`** ÔÇö @brief Split an overly wide merged word box at vertical projection whitespace valleys.
+* **`splitWideTokenBox`** ÔÇö @brief Split an unusually wide multi-column box only at genuine wide whitespace gaps, never mid-word.
 
 ## `__init__.py`
 

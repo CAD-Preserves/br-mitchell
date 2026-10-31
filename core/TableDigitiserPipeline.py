@@ -55,7 +55,7 @@ class TableDigitiserPipeline:
     self.section_assembler = SectionAssembler(self.pipeline_cfg, self.volumes_cfg)
 
     dev_name = "cuda" if self.ocr_engine.use_cuda else "cpu"
-    arch_name = self.pipeline_cfg.get("ocr", {}).get("architecture", "parseq")
+    arch_name = "easyocr/" + str(self.pipeline_cfg.get("ocr", {}).get("architecture", "english_g2"))
     msg = self.cfg_loader.formatLocalisedString("pipeline_initialised", [dev_name, arch_name])
     print(msg, flush=True)
 
@@ -198,11 +198,9 @@ class TableDigitiserPipeline:
             "region_header": hdr_meta.get("region_header")
           }
           tables = self.reconstructor.D_reconstructPageTables(p_info, cp["table_blocks"], cp["tokens"])
-          nf_obj = self.section_assembler.C_extractNotesAndFootnotes(cp["tokens"], cp["table_blocks"])
 
           page_records_array.append({
             "header_meta": hdr_meta,
-            "notes_and_footnotes": nf_obj,
             "orientation": cp["orientation"],
             "pdf_page": cp["page_index"],
             "tables": tables
@@ -247,7 +245,7 @@ class TableDigitiserPipeline:
       vt = tasks_array[i]
       t_v0 = time.time()
       page_records = self.C_processVolumePages(vt)
-      sec_summaries = self.section_assembler.D_exportVolumeSections(vt, page_records, self.root_dir)
+      sec_summaries = self.section_assembler.C_exportVolumeSections(vt, page_records, self.root_dir)
       dt_v = round(time.time() - t_v0, 2)
 
       vol_out_dir = os.path.join(json_root_dir, vt["volume_id"])
