@@ -101,6 +101,7 @@
 * **`D_buildSectionDocument`** ÔÇö @brief Step D: Build the complete per-section JSON dictionary {<table_key>: {name, subtitle, <place_key>: {...}}}.
 * **`analyseColumnHeader`** ÔÇö @brief Partition a column's header_path segments into years, semantic place/indicator labels, and ignored unit/index lines.
 * **`cleanProseSpacing`** ÔÇö @brief Normalise whitespace and heal common OCR kerning artefacts such as '(inthousands)' -> '(in thousands)'.
+* **`detectInternalDateColumns`** ÔÇö @brief Detect mid-table Date/Year stub columns in side-by-side multi-country tables (e.g. Sikkim | Portuguese Settlements).
 * **`extractPlaceOverrideFromQualifier`** ÔÇö @brief Detect mid-table sovereign/entity renames over a country column (e.g. 'West Germany' beneath 'Germany').
 * **`extractQualifierIndicatorSlug`** ÔÇö @brief Convert a sub-entity/scope qualifier (e.g. 'French Zone') into an indicator prefix, ignoring base-year or 'Whole Country' tags.
 * **`extractSubtablePlaceKey`** ÔÇö @brief Extract a valid snake_case place key from a sub-table heading, stripping '(continued)' and rejecting banners/units.
