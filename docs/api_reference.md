@@ -6,15 +6,18 @@
 
 * **`AdminDivisionMaskResolver`** ÔÇö @brief Resolves sub-national states, provinces, crownlands, guberniyas, counties, Bezirke, and princely agencies.
 * **`A_discoverDelegatedCityKeys`** ÔÇö @brief Step A: Scan all A3 section dictionaries and return canonical city keys delegated to CityMaskResolver (europe/A3 spillovers).
-* **`B_resolveAllAdminDivisions`** ÔÇö @brief Step B: Resolve and rasterise every administrative division stem and parent A3 group across all three volumes.
+* **`B_resolveAllAdminDivisions`** ÔÇö @brief Step B: Resolve, snap partition sets, and rasterise every administrative division stem and parent A3 group across all three volumes.
+* **`applyDivisionModifiers`** ÔÇö @brief Apply extra GADM/Germany-1914 unions, admin1/Germany-1914 exclusions, 10m landmask clipping, and parent country clipping.
+* **`applyPartitionSets`** ÔÇö @brief Snap configured partition_sets in admin_division_rules.json5 onto their canonical parent country or division masks.
 * **`cleanDivisionStem`** ÔÇö @brief Strip trailing census years, footnotes, leading OCR column numbers, and '_revised' from an A3 series key.
 * **`extractGroupStems`** ÔÇö @brief Group all raw census series keys inside an A3 group dictionary into clean division stems and active year spans.
 * **`matchAdmin1ByNamesOrRegions`** ÔÇö @brief Match features in ne_admin1 by country code and state/province names or region names.
 * **`matchGadmFeatures`** ÔÇö @brief Match features in a UC Davis GADM 4.1 country/level layer using compact space-insensitive ASCII slugs.
 * **`matchGermany1914Features`** ÔÇö @brief Match 1914 Imperial German constituent states (STAAT_NAME) or Regierungsbezirke (REG_NAME).
 * **`matchRussia1897Features`** ÔÇö @brief Match 1897 Russian Empire governorates / oblasts by source_english property.
-* **`matchUkCountiesFeatures`** ÔÇö @brief Match UK ceremonial / historic counties from uk_counties, with automatic ne_admin1 GBR fallback.
-* **`resolveRuleGeometryIndices`** ÔÇö @brief Execute the configured geospatial lookup and scanline rasterisation for a single division rule.
+* **`matchUkCountiesFeatures`** ÔÇö @brief Match UK ceremonial / 1974 counties from uk_counties, with automatic ne_admin1 GBR fallback.
+* **`matchUkHistoricCountiesFeatures`** ÔÇö @brief Match UK historic shires/counties from The Historic County Borders Project (uk_historic_counties).
+* **`resolveRuleGeometryIndices`** ÔÇö @brief Execute the configured geospatial lookup, scanline rasterisation, and parent/landmask clipping for a single division rule.
 * **`resolveSingleDivision`** ÔÇö @brief Resolve and cache a single canonical administrative division entity ('admin:<prefix>:<clean_stem>').
 * **`resolveSpilledGroupHeaderMask`** ÔÇö @brief Resolve and return polygon indices when an A3 group header has an explicit extra_header_division (e.g. ufa, sardinia, yorkshire).
 
@@ -79,16 +82,20 @@
 * **`CountryMaskResolver`** ÔÇö @brief Resolves canonical country definitions and maps corpus location keys to canonical country entities.
 * **`A_resolveAllCountries`** ÔÇö @brief Step A: Rasterise all canonical modern and historical country entities onto the 4320x2160 grid.
 * **`B_resolveCorpusCountryKey`** ÔÇö @brief Step B: Resolve a raw corpus JSON location key to one or more canonical country IDs.
+* **`applySourceModifiers`** ÔÇö @brief Apply declarative admin1/GADM additions, subtractions, polygon intersections, and country clips to a country mask.
+* **`collectCountryUnionIndices`** ÔÇö @brief Resolve and union flat pixel index arrays across a list of canonical country IDs.
 * **`extractCandidateTokens`** ÔÇö @brief Generate progressive prefix/suffix-stripped slug candidates from an OCR or footnote-suffixed corpus key.
 * **`formatEntityMaskRef`** ÔÇö @brief Format a canonical country/subadmin entity ID into a 'type:key' reference for table_masks.json.
+* **`getLandmaskIndices`** ÔÇö @brief Build and cache the canonical 4320x2160 10m Natural Earth landmask (ne_admin0 union ne_map_units).
 * **`isSubadminEntity`** ÔÇö @brief Check whether an entity in country_rules.json5 belongs in subadmin_masks.json rather than country_masks.json.
 * **`matchAdmin0Features`** ÔÇö @brief Match features in ne_admin0, ne_map_units, or ne_subunits using ISO_A3, ADM0_A3, GU_A3, or SU_A3 codes.
 * **`matchAdmin1Features`** ÔÇö @brief Match state/province features in ne_admin1 for sub-national country entries (e.g. Alaska, Hawaii, Java & Madura).
 * **`matchBritishIndiaFeatures`** ÔÇö @brief Match features from the 1948 British India shapefile layer (e.g. Portuguese Settlements in India).
 * **`matchCshapesFeatures`** ÔÇö @brief Match historical sovereign or colonial state polygons in ETH Zürich CShapes 2.0 by gwcode and target year.
-* **`matchHistoricalBasemapFeatures`** ÔÇö @brief Match features from historical world basemap GeoJSONs (e.g. hist_1880) or single-territory historical layers.
+* **`matchGadmSubset`** ÔÇö @brief Match features in a UC Davis GADM 4.1 country/level layer by compact ASCII name slug.
+* **`matchHistoricalBasemapFeatures`** ÔÇö @brief Match features from historical world basemap GeoJSONs or single-territory historical layers.
 * **`normaliseTargetList`** ÔÇö @brief Convert a string or list of country IDs into a validated list of canonical country IDs.
-* **`resolveSingleCountry`** ÔÇö @brief Resolve and rasterise a single canonical country entity (supporting recursive union and set difference).
+* **`resolveSingleCountry`** ÔÇö @brief Resolve and rasterise a single canonical country entity (supporting recursive union, difference, polygon, and layer modifiers).
 * **`resolveWrapperInnerSeries`** ÔÇö @brief Resolve every inner series key inside a multi-country wrapper sub-table to its exact canonical entity ID.
 * **`scanSubObjectCountries`** ÔÇö @brief Extract canonical country IDs embedded in nested time-series sub-keys (e.g. 'austria_1950', 'japan_1970').
 
@@ -99,14 +106,16 @@
 * **`EquirectangularRasteriser`** ÔÇö @brief Scanline-rasterises WGS84 GeoJSON/Shapely geometries onto a 4320x2160 Equirectangular grid.
 * **`A_rasteriseGeometry`** ÔÇö @brief Step A: Scanline-rasterise a GeoJSON dict, Shapely geometry, or list of geometries to sorted flat pixel indices.
 * **`B_exportRgbPng`** ÔÇö @brief Step B: Export a (height, width, 3) uint8 RGB numpy buffer as a lossless PNG image.
+* **`clipIndicesWithFallback`** ÔÇö @brief Intersect a flat pixel index mask with a target mask, snapping to the nearest target pixel if small territory drops to 0.
 * **`computeMaskMetrics`** ÔÇö @brief Compute pixel count, pixel bounding box, WGS84 bounding box, and WGS84 centroid from flat pixel indices.
 * **`extractPolygons`** ÔÇö @brief Recursively unpack GeoJSON dicts, Feature dicts, or Shapely geometries into valid Shapely Polygons.
+* **`getConfiguredWidth`** ÔÇö @brief Read validated grid width from configuration dictionary.
 * **`lonLatToFlatIndexArray`** ÔÇö @brief Convert a single WGS84 (lon, lat) coordinate into a 1-element int32 flat pixel index array.
 * **`rasteriseBbox`** ÔÇö @brief Rasterise a WGS84 bounding box [west, south, east, north] directly to flat pixel indices.
 * **`rasterisePointDisc`** ÔÇö @brief Rasterise an equirectangular urban disc centred at (lon, lat) with latitude cosine compensation.
-* **`rasteriseSinglePolygon`** ÔÇö @brief Scanline-rasterise a single non-dateline-crossing Shapely Polygon (exterior minus interior holes).
+* **`rasteriseSinglePolygon`** ÔÇö @brief Scanline-rasterise a single non-dateline-crossing Shapely Polygon via exact half-open float64 pixel-centre containment.
+* **`snapPartitionToTargetMask`** ÔÇö @brief Clip a map of sub-division masks to a canonical parent mask, optionally enforcing pairwise disjointness and filling uncovered coastal pixels.
 * **`splitAntimeridianPolygon`** ÔÇö @brief Split polygons that wrap across the +-180 degree antimeridian into valid [-180, 180] parts.
-* **`getConfiguredWidth`** ÔÇö @brief Read validated grid width from configuration dictionary.
 
 ## `GeoJsonFetcher.py`
 

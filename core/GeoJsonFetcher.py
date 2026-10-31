@@ -412,15 +412,6 @@ class GeoJsonFetcher:
             if isinstance(local_g, dict) and local_g.get("type") in ("Polygon", "MultiPolygon"):
               best_geom = local_g
               break
-          if best_geom is None and items:
-            bb = items[0].get("boundingbox")
-            if isinstance(bb, list) and len(bb) == 4:
-              s_lat, n_lat, w_lon, e_lon = float(bb[0]), float(bb[1]), float(bb[2]), float(bb[3])
-              if (n_lat - s_lat) >= 0.05 and (e_lon - w_lon) >= 0.05:
-                best_geom = {
-                  "coordinates": [[[w_lon, s_lat], [e_lon, s_lat], [e_lon, n_lat], [w_lon, n_lat], [w_lon, s_lat]]],
-                  "type": "Polygon"
-                }
           break
         else:
           time.sleep(1.5*(z + 1))

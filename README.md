@@ -17,7 +17,7 @@ JSON outputs are in `/outputs/`. To digitise from your own PDFs, see `/common/di
 - `core/` — Modular Python CV + CUDA EasyOCR pipeline (`PagePreprocessor`, `GraphicalElementDetector`, `TokenSegmenter`, `GpuOcrEngine`, `BraceAndCellResolver`, `HeaderHierarchyResolver`, `TableStructureReconstructor`, `PlaceKeyNormaliser`, `TableSeriesFlattener`, `SectionAssembler`, `TableDigitiserPipeline` and `cli_runner.py`).
 - `docs/` — Doxygen configuration (`Doxyfile`), pipeline architecture, JSON schema (`architecture_and_schema.md`) and generated API reference (`api_reference.md`).
 - `localisation/` — CLI localisation strings in EN-GB, FR and DE (`en_gb.json5`, `fr.json5`, `de.json5`).
-- `output/areal_masks/` — `4320x2160` WGS84 Equirectangular lossless RGB `.png` areal masks (`provinces.png`, `cities.png` and visual-inspection category maps) plus RGB-indexed JSON registries covering 100% of corpus locations.
+- `output/areal_masks/` — `4320x2160` WGS84 Equirectangular lossless RGB `.png` areal mask (`provinces.png`) plus flat JSON registries (`country_masks.json`, `subadmin_masks.json`, `city_masks.json` and `table_masks.json`) covering 100% of corpus locations.
 - `output/json/` — Digitised per-section JSON files namespaced by volume (`africa_asia_oceania/`, `americas/`, `europe/`) plus `manifest.json`.
 
 ## Usage

@@ -24,6 +24,7 @@ class CountryMaskResolver:
     self.aliases_cfg = country_rules_obj.get("aliases", {})
     self.countries_cfg = country_rules_obj.get("countries", {})
     self.fetcher = fetcher
+    self.landmask_indices = None
     self.rasteriser = rasteriser
     self.resolved_countries_obj = {}
     self.section_overrides_cfg = country_rules_obj.get("section_key_overrides", {})
@@ -108,6 +109,158 @@ class CountryMaskResolver:
     return []
 
 
+  def applySourceModifiers (self, arg1_flat_indices, arg2_source_obj, arg3_visiting_set):
+    """
+    @brief Apply declarative admin1/GADM additions, subtractions, polygon intersections, and country clips to a country mask.
+    @param arg1_flat_indices Initial sorted 1D int32 array of flat pixel indices.
+    @param arg2_source_obj Country source specification dictionary.
+    @param arg3_visiting_set Set of currently visiting country IDs to prevent cyclic recursion.
+    @return Modified sorted 1D int32 array of flat pixel indices.
+    """
+    #Convert from parameters
+    flat_indices = arg1_flat_indices
+    source_obj = arg2_source_obj if isinstance(arg2_source_obj, dict) else {}
+    visiting_set = arg3_visiting_set if isinstance(arg3_visiting_set, set) else set()
+
+    #Declare local instance variables
+    clip_countries = source_obj.get("clip_to", [])
+    clip_parts = []
+    exclude_countries = source_obj.get("exclude_countries", [])
+    extra_admin1 = source_obj.get("extra_admin1", [])
+    extra_gadm = source_obj.get("extra_gadm", [])
+    extra_layers = source_obj.get("extra_layers", [])
+    extra_members = source_obj.get("extra_members", [])
+    inter_coords = source_obj.get("intersect_coords", [])
+    layer_key = str(source_obj.get("layer") or "")
+    non_ne_layers = {"british_india_1948", "cshapes_2", "galicia_habsburg", "germany_1914", "hungary_transleithania", "russia_1897"}
+    parts_list = []
+    sub_admin1 = source_obj.get("subtract_admin1", [])
+    sub_gadm = source_obj.get("subtract_gadm", [])
+
+    if isinstance(extra_admin1, list) and extra_admin1:
+      parts_list = [flat_indices] if flat_indices.size > 0 else []
+      for i in range(len(extra_admin1)):
+        local_feats = self.matchAdmin1Features(extra_admin1[i])
+        local_idx = self.rasteriser.A_rasteriseGeometry(local_feats, {"ensure_min_pixel": False})
+        if local_idx.size > 0:
+          parts_list.append(local_idx)
+      flat_indices = np.unique(np.concatenate(parts_list)) if parts_list else flat_indices
+
+    if isinstance(extra_gadm, list) and extra_gadm:
+      parts_list = [flat_indices] if flat_indices.size > 0 else []
+      for i in range(len(extra_gadm)):
+        local_g = extra_gadm[i]
+        local_feats = self.matchGadmSubset(
+          str(local_g.get("gadm_iso3") or ""),
+          int(local_g.get("gadm_level") or 1),
+          local_g.get("names", [])
+        )
+        local_idx = self.rasteriser.A_rasteriseGeometry(local_feats, {"ensure_min_pixel": False})
+        if local_g.get("clip_to"):
+          local_clip = self.collectCountryUnionIndices(local_g["clip_to"], visiting_set)
+          local_idx = self.rasteriser.clipIndicesWithFallback(local_idx, local_clip)
+        if local_idx.size > 0:
+          parts_list.append(local_idx)
+      flat_indices = np.unique(np.concatenate(parts_list)) if parts_list else flat_indices
+
+    if isinstance(extra_layers, list) and extra_layers:
+      parts_list = [flat_indices] if flat_indices.size > 0 else []
+      for i in range(len(extra_layers)):
+        local_l = extra_layers[i]
+        local_lk = str(local_l.get("layer") or "")
+        if local_l.get("type") == "polygon":
+          local_poly = {"coordinates": [local_l.get("coords", [])], "type": "Polygon"}
+          local_idx = self.rasteriser.A_rasteriseGeometry(local_poly, {"ensure_min_pixel": False})
+        elif local_lk in ("ne_admin0", "ne_map_units", "ne_subunits"):
+          local_feats = self.matchAdmin0Features(local_lk, local_l)
+          local_idx = self.rasteriser.A_rasteriseGeometry(local_feats, {"ensure_min_pixel": False})
+        elif local_lk == "cshapes_2":
+          local_feats = self.matchCshapesFeatures(local_l)
+          local_idx = self.rasteriser.A_rasteriseGeometry(local_feats, {"ensure_min_pixel": False})
+        else:
+          local_feats = self.matchHistoricalBasemapFeatures(local_lk, local_l)
+          local_idx = self.rasteriser.A_rasteriseGeometry(local_feats, {"ensure_min_pixel": False})
+        local_idx = self.applySourceModifiers(local_idx, local_l, visiting_set)
+        if local_idx.size > 0:
+          parts_list.append(local_idx)
+      flat_indices = np.unique(np.concatenate(parts_list)) if parts_list else flat_indices
+
+    if isinstance(inter_coords, list) and len(inter_coords) >= 4:
+      poly_geom = {"coordinates": [inter_coords], "type": "Polygon"}
+      inter_idx = self.rasteriser.A_rasteriseGeometry(poly_geom, {"ensure_min_pixel": False})
+      flat_indices = self.rasteriser.clipIndicesWithFallback(flat_indices, inter_idx)
+
+    if isinstance(sub_admin1, list) and sub_admin1:
+      for i in range(len(sub_admin1)):
+        local_feats = self.matchAdmin1Features(sub_admin1[i])
+        local_sub = self.rasteriser.A_rasteriseGeometry(local_feats, {"ensure_min_pixel": False})
+        if local_sub.size > 0 and flat_indices.size > 0:
+          flat_indices = np.setdiff1d(flat_indices, local_sub, assume_unique=True)
+
+    if isinstance(sub_gadm, list) and sub_gadm:
+      for i in range(len(sub_gadm)):
+        local_g = sub_gadm[i]
+        local_feats = self.matchGadmSubset(
+          str(local_g.get("gadm_iso3") or ""),
+          int(local_g.get("gadm_level") or 1),
+          local_g.get("names", [])
+        )
+        local_sub = self.rasteriser.A_rasteriseGeometry(local_feats, {"ensure_min_pixel": False})
+        if local_sub.size > 0 and flat_indices.size > 0:
+          flat_indices = np.setdiff1d(flat_indices, local_sub, assume_unique=True)
+
+    if isinstance(extra_members, list) and extra_members:
+      parts_list = [flat_indices] if flat_indices.size > 0 else []
+      for i in range(len(extra_members)):
+        local_ex = self.resolveSingleCountry(str(extra_members[i]), visiting_set)
+        if local_ex["flat_indices"].size > 0:
+          parts_list.append(local_ex["flat_indices"])
+      flat_indices = np.unique(np.concatenate(parts_list)) if parts_list else flat_indices
+
+    if (layer_key in non_ne_layers or layer_key.startswith("hist_")) and not source_obj.get("do_not_clip_land"):
+      flat_indices = self.rasteriser.clipIndicesWithFallback(flat_indices, self.getLandmaskIndices())
+
+    if isinstance(clip_countries, list) and clip_countries:
+      clip_parts = self.collectCountryUnionIndices(clip_countries, visiting_set)
+      if clip_parts.size > 0:
+        flat_indices = self.rasteriser.clipIndicesWithFallback(flat_indices, clip_parts)
+
+    if isinstance(exclude_countries, list) and exclude_countries:
+      excl_idx = self.collectCountryUnionIndices(exclude_countries, visiting_set)
+      if excl_idx.size > 0 and flat_indices.size > 0:
+        reduced = np.setdiff1d(flat_indices, excl_idx, assume_unique=True)
+        if reduced.size > 0:
+          flat_indices = reduced
+
+    #Return statement
+    return flat_indices
+
+
+  def collectCountryUnionIndices (self, arg1_country_ids_list, arg2_visiting_set):
+    """
+    @brief Resolve and union flat pixel index arrays across a list of canonical country IDs.
+    @param arg1_country_ids_list List of canonical country IDs.
+    @param arg2_visiting_set Active recursion guard set.
+    @return Sorted 1D int32 array of unioned pixel indices.
+    """
+    #Convert from parameters
+    country_ids_list = arg1_country_ids_list if isinstance(arg1_country_ids_list, list) else []
+    visiting_set = arg2_visiting_set if isinstance(arg2_visiting_set, set) else set()
+
+    #Declare local instance variables
+    arrays_list = []
+
+    for i in range(len(country_ids_list)):
+      local_cid = str(country_ids_list[i] or "").strip()
+      if local_cid and local_cid not in visiting_set:
+        local_rec = self.resolveSingleCountry(local_cid, set(visiting_set))
+        if local_rec["flat_indices"].size > 0:
+          arrays_list.append(local_rec["flat_indices"])
+
+    #Return statement
+    return np.unique(np.concatenate(arrays_list)) if arrays_list else np.zeros(0, dtype=np.int32)
+
+
   def extractCandidateTokens (self, arg1_raw_key):
     """
     @brief Generate progressive prefix/suffix-stripped slug candidates from an OCR or footnote-suffixed corpus key.
@@ -178,6 +331,30 @@ class CountryMaskResolver:
     return f"{prefix_str}:{entity_id}"
 
 
+  def getLandmaskIndices (self):
+    """
+    @brief Build and cache the canonical 4320x2160 10m Natural Earth landmask (ne_admin0 union ne_map_units).
+    @return Sorted 1D numpy int32 array of global terrestrial pixel indices.
+    """
+    #Declare local instance variables
+    adm0_feats = []
+    adm0_idx = None
+    mu_feats = []
+    mu_idx = None
+
+    if self.landmask_indices is not None:
+      return self.landmask_indices
+
+    adm0_feats = self.fetcher.A_fetchBaseLayer("ne_admin0").get("features", [])
+    mu_feats = self.fetcher.A_fetchBaseLayer("ne_map_units").get("features", [])
+    adm0_idx = self.rasteriser.A_rasteriseGeometry(adm0_feats, {"ensure_min_pixel": False})
+    mu_idx = self.rasteriser.A_rasteriseGeometry(mu_feats, {"ensure_min_pixel": False})
+    self.landmask_indices = np.unique(np.concatenate([adm0_idx, mu_idx]))
+
+    #Return statement
+    return self.landmask_indices
+
+
   def isSubadminEntity (self, arg1_entity_id):
     """
     @brief Check whether an entity in country_rules.json5 belongs in subadmin_masks.json rather than country_masks.json.
@@ -204,6 +381,7 @@ class CountryMaskResolver:
 
     #Declare local instance variables
     adm0_code = str(source_obj.get("adm0_a3") or "").upper()
+    adm0_list_set = set(str(x).upper() for x in source_obj.get("adm0_a3_list", []) if x)
     fc_obj = self.fetcher.A_fetchBaseLayer(layer_key)
     feats = fc_obj.get("features", [])
     gu_code = str(source_obj.get("gu_a3") or "").upper()
@@ -219,7 +397,9 @@ class CountryMaskResolver:
       p_gu = str(local_p.get("GU_A3") or "").upper()
       p_su = str(local_p.get("SU_A3") or "").upper()
 
-      if su_code and p_su == su_code:
+      if adm0_list_set and (p_adm in adm0_list_set or p_gu in adm0_list_set or p_iso in adm0_list_set):
+        matched_array.append(local_f)
+      elif su_code and p_su == su_code:
         matched_array.append(local_f)
       elif gu_code and (p_gu == gu_code or p_adm == gu_code):
         matched_array.append(local_f)
@@ -377,9 +557,47 @@ class CountryMaskResolver:
     return []
 
 
+  def matchGadmSubset (self, arg1_iso3, arg2_level, arg3_names_list):
+    """
+    @brief Match features in a UC Davis GADM 4.1 country/level layer by compact ASCII name slug.
+    @param arg1_iso3 Three-letter ISO3 code.
+    @param arg2_level Integer administrative level (1 or 2).
+    @param arg3_names_list List of feature names.
+    @return List of matching GeoJSON Feature dictionaries.
+    """
+    #Convert from parameters
+    iso3 = str(arg1_iso3 or "").strip().upper()
+    level = int(arg2_level)
+    names_list = arg3_names_list if isinstance(arg3_names_list, list) else []
+
+    #Declare local instance variables
+    fc_obj = self.fetcher.B_fetchGadmLayer(iso3, level)
+    feats = fc_obj.get("features", [])
+    matched_array = []
+    name_field = f"NAME_{level}"
+    target_slugs = set(self.fetcher.normaliseAsciiSlug(n).replace("_", "") for n in names_list if n)
+    var_field = f"VARNAME_{level}"
+
+    for i in range(len(feats)):
+      local_f = feats[i]
+      local_p = local_f.get("properties") or {}
+      cands = [str(local_p.get(name_field) or "")]
+      var_txt = str(local_p.get(var_field) or "")
+      if var_txt:
+        cands.extend(var_txt.split("|"))
+      for x in range(len(cands)):
+        cs = self.fetcher.normaliseAsciiSlug(cands[x]).replace("_", "")
+        if cs and cs in target_slugs:
+          matched_array.append(local_f)
+          break
+
+    #Return statement
+    return matched_array
+
+
   def matchHistoricalBasemapFeatures (self, arg1_layer_key, arg2_source_obj):
     """
-    @brief Match features from historical world basemap GeoJSONs (e.g. hist_1880) or single-territory historical layers.
+    @brief Match features from historical world basemap GeoJSONs or single-territory historical layers.
     @param arg1_layer_key Layer key in areal_mask_config.json5.
     @param arg2_source_obj Source specification dictionary.
     @return List of matching GeoJSON Feature dictionaries.
@@ -444,7 +662,7 @@ class CountryMaskResolver:
 
   def resolveSingleCountry (self, arg1_country_id, arg2_visiting_set=None):
     """
-    @brief Resolve and rasterise a single canonical country entity (supporting recursive union and set difference).
+    @brief Resolve and rasterise a single canonical country entity (supporting recursive union, difference, polygon, and layer modifiers).
     @param arg1_country_id Canonical country ID key in country_rules.json5.
     @param arg2_visiting_set Set of currently visiting country IDs to guard against cycles.
     @return Resolved country entity dictionary.
@@ -456,12 +674,12 @@ class CountryMaskResolver:
     #Declare local instance variables
     cfg = {}
     empty_idx = np.zeros(0, dtype=np.int32)
-    extra_parts = []
     fallback_pt = None
     flat_idx = None
     layer_key = ""
     matched_feats = []
     metrics_obj = {}
+    poly_coords = []
     record_obj = {}
     source_obj = {}
     source_type = ""
@@ -488,6 +706,7 @@ class CountryMaskResolver:
         if local_mem["flat_indices"].size > 0:
           member_arrays.append(local_mem["flat_indices"])
       flat_idx = np.unique(np.concatenate(member_arrays)) if member_arrays else empty_idx
+      flat_idx = self.applySourceModifiers(flat_idx, source_obj, visiting_set)
     elif source_type == "difference":
       base_rec = self.resolveSingleCountry(str(source_obj.get("base") or ""), visiting_set)
       flat_idx = base_rec["flat_indices"].copy()
@@ -496,9 +715,15 @@ class CountryMaskResolver:
         local_sub = self.resolveSingleCountry(str(sub_list[i]), visiting_set)
         if local_sub["flat_indices"].size > 0 and flat_idx.size > 0:
           flat_idx = np.setdiff1d(flat_idx, local_sub["flat_indices"], assume_unique=True)
+      flat_idx = self.applySourceModifiers(flat_idx, source_obj, visiting_set)
+    elif source_type == "polygon":
+      poly_coords = source_obj.get("coords", [])
+      flat_idx = self.rasteriser.A_rasteriseGeometry({"coordinates": [poly_coords], "type": "Polygon"}, {"fallback_lonlat": fallback_pt})
+      flat_idx = self.applySourceModifiers(flat_idx, source_obj, visiting_set)
     elif source_type == "bbox":
       bb = source_obj.get("bbox", [0.0, 0.0, 0.1, 0.1])
       flat_idx = self.rasteriser.rasteriseBbox(bb[0], bb[1], bb[2], bb[3])
+      flat_idx = self.applySourceModifiers(flat_idx, source_obj, visiting_set)
     else:
       if layer_key in ("ne_admin0", "ne_map_units", "ne_subunits"):
         matched_feats = self.matchAdmin0Features(layer_key, source_obj)
@@ -512,13 +737,7 @@ class CountryMaskResolver:
         matched_feats = self.matchHistoricalBasemapFeatures(layer_key, source_obj)
 
       flat_idx = self.rasteriser.A_rasteriseGeometry(matched_feats, {"fallback_lonlat": fallback_pt})
-      if isinstance(source_obj.get("extra_members"), list):
-        extra_parts = [flat_idx] if flat_idx.size > 0 else []
-        for i in range(len(source_obj["extra_members"])):
-          local_ex = self.resolveSingleCountry(str(source_obj["extra_members"][i]), visiting_set)
-          if local_ex["flat_indices"].size > 0:
-            extra_parts.append(local_ex["flat_indices"])
-        flat_idx = np.unique(np.concatenate(extra_parts)) if extra_parts else empty_idx
+      flat_idx = self.applySourceModifiers(flat_idx, source_obj, visiting_set)
 
     visiting_set.discard(country_id)
 
@@ -621,4 +840,3 @@ class CountryMaskResolver:
 
     #Return statement
     return sorted(found_ids)
-

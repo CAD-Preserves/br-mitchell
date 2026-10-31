@@ -30,13 +30,33 @@
     "austria_cisleithania": {
       "era_type": "historical",
       "name": "Cisleithania (Austrian Crownlands of the Habsburg Empire)",
-      "source": {"base": "austria_hungary", "subtract": ["hungary_transleithania", "austria_bosnia_and_hercegovina"], "type": "difference"},
+      "source": {
+        "extra_admin1": [
+          {"adm0_a3": "HRV", "names": ["Dubrovacko-Neretvanska", "Istarska", "Šibensko-Kninska", "Splitsko-Dalmatinska", "Zadarska"]},
+          {"adm0_a3": "ITA", "names": ["Bozen", "Gorizia", "Trento", "Trieste"]},
+          {"adm0_a3": "ROU", "names": ["Suceava"]},
+          {"adm0_a3": "UKR", "names": ["Chernivtsi"]}
+        ],
+        "extra_layers": [
+          {
+            "all_features": true,
+            "clip_to": ["poland", "ukraine"],
+            "exclude_countries": ["german_empire"],
+            "layer": "galicia_habsburg",
+            "subtract_admin1": [{"adm0_a3": "UKR", "names": ["Chernivtsi", "Zakarpattia"]}]
+          }
+        ],
+        "members": ["austria", "czech_republic", "slovenia"],
+        "subtract_admin1": [{"adm0_a3": "AUT", "names": ["Burgenland"]}],
+        "subtract_gadm": [{"gadm_iso3": "SVN", "gadm_level": 1, "names": ["Pomurska"]}],
+        "type": "union"
+      },
       "valid_years": [1750, 1918]
     },
     "austria_hungary": {
       "era_type": "historical",
       "name": "Austria-Hungary",
-      "source": {"gwcode": 300, "layer": "cshapes_2", "year": 1914},
+      "source": {"members": ["austria_bosnia_and_hercegovina", "austria_cisleithania", "hungary_transleithania"], "type": "union"},
       "valid_years": [1867, 1918]
     },
     "azerbaijan": {"era_type": "modern", "name": "Azerbaijan", "source": {"iso3": "AZE", "layer": "ne_admin0"}},
@@ -63,7 +83,7 @@
     "bolivia_pre_1879": {
       "era_type": "historical",
       "name": "Bolivia (pre-1879 with Litoral)",
-      "source": {"layer": "hist_1880", "name": "Bolivia"},
+      "source": {"extra_admin1": [{"adm0_a3": "CHL", "names": ["Antofagasta"]}], "members": ["bolivia"], "type": "union"},
       "valid_years": [1825, 1879]
     },
     "bosnia_and_herzegovina": {"era_type": "modern", "name": "Bosnia and Herzegovina", "source": {"iso3": "BIH", "layer": "ne_admin0"}},
@@ -72,20 +92,25 @@
     "british_cameroon": {
       "era_type": "historical",
       "name": "British Cameroons",
-      "source": {"gwcode": 472, "layer": "cshapes_2", "year": 1950},
+      "source": {
+        "adm0_a3": "CMR",
+        "extra_layers": [{"clip_to": ["nigeria"], "gwcode": 472, "layer": "cshapes_2", "year": 1950}],
+        "layer": "ne_admin1",
+        "names": ["Nord-Ouest", "Sud-Ouest"]
+      },
       "valid_years": [1919, 1961]
     },
     "british_columbia": {"era_type": "modern", "name": "British Columbia", "source": {"adm0_a3": "CAN", "layer": "ne_admin1", "name": "British Columbia"}},
     "british_india_all": {
       "era_type": "historical",
       "name": "British India (including Princely States and Burma)",
-      "source": {"gwcode": 750, "layer": "cshapes_2", "year": 1925},
+      "source": {"members": ["british_india_ex_burma", "myanmar"], "type": "union"},
       "valid_years": [1858, 1937]
     },
     "british_india_ex_burma": {
       "era_type": "historical",
       "name": "British India (excluding Burma)",
-      "source": {"gwcode": 750, "layer": "cshapes_2", "year": 1940},
+      "source": {"exclude_countries": ["portuguese_india"], "members": ["bangladesh", "india", "pakistan"], "type": "union"},
       "valid_years": [1937, 1947]
     },
     "british_north_america": {
@@ -97,7 +122,7 @@
     "british_somaliland": {
       "era_type": "historical",
       "name": "British Somaliland",
-      "source": {"gwcode": 521, "layer": "cshapes_2", "year": 1950},
+      "source": {"adm0_a3": "SOL", "layer": "ne_admin0"},
       "valid_years": [1884, 1960]
     },
     "british_virgin_islands": {"era_type": "modern", "name": "British Virgin Islands", "source": {"adm0_a3": "VGB", "layer": "ne_admin0"}},
@@ -125,7 +150,7 @@
     "cape_colony": {
       "era_type": "historical",
       "name": "Cape of Good Hope (Cape Colony / Cape Province)",
-      "source": {"gwcode": 561, "layer": "cshapes_2", "year": 1905},
+      "source": {"adm0_a3": "ZAF", "layer": "ne_admin1", "names": ["Eastern Cape", "Northern Cape", "Western Cape"]},
       "valid_years": [1795, 1994]
     },
     "cape_verde": {"era_type": "modern", "name": "Cape Verde Islands", "source": {"iso3": "CPV", "layer": "ne_admin0"}},
@@ -164,17 +189,21 @@
     "croatia_slavonia": {
       "era_type": "historical",
       "name": "Kingdom of Croatia-Slavonia",
-      "source": {"iso3": "HRV", "layer": "ne_admin0"},
+      "source": {
+        "base": "croatia",
+        "subtract_admin1": [{"adm0_a3": "HRV", "names": ["Dubrovacko-Neretvanska", "Istarska", "Šibensko-Kninska", "Splitsko-Dalmatinska", "Zadarska"]}],
+        "type": "difference"
+      },
       "valid_years": [1868, 1918]
     },
     "cuba": {"era_type": "modern", "name": "Cuba", "source": {"iso3": "CUB", "layer": "ne_admin0"}},
     "curacao": {"era_type": "modern", "name": "Curaçao", "source": {"adm0_a3": "CUW", "layer": "ne_admin0"}},
-    "cyprus": {"era_type": "modern", "name": "Cyprus", "source": {"adm0_a3": "CYP", "layer": "ne_admin0"}},
+    "cyprus": {"era_type": "modern", "name": "Cyprus", "source": {"adm0_a3_list": ["CYP", "CYN"], "layer": "ne_admin0"}},
     "czech_republic": {"era_type": "modern", "name": "Czech Republic", "source": {"iso3": "CZE", "layer": "ne_admin0"}},
     "czechoslovakia": {
       "era_type": "historical",
       "name": "Czechoslovakia",
-      "source": {"gwcode": 315, "layer": "cshapes_2", "year": 1960},
+      "source": {"members": ["czech_republic", "slovakia"], "type": "union"},
       "temporal_eras": [
         {"end_year": 1938, "entity_id": "czechoslovakia_first_republic", "label": "First Czechoslovak Republic (incl. Subcarpathian Ruthenia)", "start_year": 1918},
         {"end_year": 1992, "entity_id": "czechoslovakia", "label": "Czechoslovakia (1945-1992)", "start_year": 1945}
@@ -184,7 +213,7 @@
     "czechoslovakia_first_republic": {
       "era_type": "historical",
       "name": "First Czechoslovak Republic (1918-1938)",
-      "source": {"gwcode": 315, "layer": "cshapes_2", "year": 1930},
+      "source": {"extra_admin1": [{"adm0_a3": "UKR", "names": ["Zakarpattia"]}], "members": ["czech_republic", "slovakia"], "type": "union"},
       "valid_years": [1918, 1938]
     },
     "denmark": {"era_type": "modern", "name": "Denmark", "source": {"adm0_a3": "DNK", "layer": "ne_admin0"}},
@@ -194,7 +223,29 @@
     "east_germany": {
       "era_type": "historical",
       "name": "East Germany (German Democratic Republic)",
-      "source": {"gwcode": 265, "layer": "cshapes_2", "year": 1970},
+      "source": {
+        "adm0_a3": "DEU",
+        "extra_layers": [
+          {
+            "clip_to": ["berlin"],
+            "coords": [
+              [13.385, 52.33],
+              [13.78, 52.33],
+              [13.78, 52.69],
+              [13.36, 52.69],
+              [13.40, 52.56],
+              [13.38, 52.52],
+              [13.45, 52.49],
+              [13.50, 52.45],
+              [13.52, 52.38],
+              [13.385, 52.33]
+            ],
+            "type": "polygon"
+          }
+        ],
+        "layer": "ne_admin1",
+        "names": ["Brandenburg", "Mecklenburg-Vorpommern", "Sachsen", "Sachsen-Anhalt", "Thüringen"]
+      },
       "valid_years": [1945, 1990]
     },
     "east_timor": {"era_type": "modern", "name": "East Timor (Timor-Leste)", "source": {"iso3": "TLS", "layer": "ne_admin0"}},
@@ -247,13 +298,13 @@
     "france_1871_1918": {
       "era_type": "historical",
       "name": "France (1871-1918, excluding Alsace-Lorraine)",
-      "source": {"gwcode": 220, "layer": "cshapes_2", "year": 1900},
+      "source": {"base": "france", "subtract_admin1": [{"adm0_a3": "FRA", "names": ["Bas-Rhin", "Haut-Rhin", "Moselle"]}], "type": "difference"},
       "valid_years": [1871, 1918]
     },
     "french_cameroon": {
       "era_type": "historical",
       "name": "French Cameroun",
-      "source": {"gwcode": 471, "layer": "cshapes_2", "year": 1950},
+      "source": {"base": "cameroon", "subtract": ["british_cameroon"], "type": "difference"},
       "valid_years": [1919, 1960]
     },
     "french_equatorial_africa": {
@@ -266,7 +317,7 @@
     "french_morocco": {
       "era_type": "historical",
       "name": "French Protectorate in Morocco",
-      "source": {"gwcode": 600, "layer": "cshapes_2", "year": 1930},
+      "source": {"base": "morocco", "subtract": ["spanish_morocco"], "type": "difference"},
       "valid_years": [1912, 1956]
     },
     "french_polynesia": {"era_type": "modern", "name": "French Polynesia", "source": {"adm0_a3": "PYF", "layer": "ne_admin0"}},
@@ -282,13 +333,19 @@
     "german_east_africa": {
       "era_type": "historical",
       "name": "German East Africa",
-      "source": {"gwcode": 510, "layer": "cshapes_2", "year": 1910},
+      "source": {"members": ["burundi", "rwanda", "tanganyika"], "type": "union"},
       "valid_years": [1885, 1919]
     },
     "german_empire": {
       "era_type": "historical",
       "name": "German Empire (1871-1918)",
-      "source": {"gwcode": 255, "layer": "cshapes_2", "year": 1914},
+      "source": {
+        "exclude_countries": ["austria", "czech_republic", "france_1871_1918", "luxembourg", "netherlands", "switzerland"],
+        "extra_admin1": [{"adm0_a3": "FRA", "names": ["Bas-Rhin", "Haut-Rhin", "Moselle"]}],
+        "extra_layers": [{"all_features": true, "layer": "germany_1914"}],
+        "members": ["germany"],
+        "type": "union"
+      },
       "valid_years": [1871, 1918]
     },
     "germany": {
@@ -304,7 +361,12 @@
     "germany_weimar": {
       "era_type": "historical",
       "name": "Weimar Republic Germany (1919-1937)",
-      "source": {"gwcode": 255, "layer": "cshapes_2", "year": 1928},
+      "source": {
+        "extra_admin1": [{"adm0_a3": "RUS", "names": ["Kaliningrad"]}],
+        "extra_layers": [{"clip_to": ["poland"], "exclude_countries": ["poland_second_republic"], "gwcode": 255, "layer": "cshapes_2", "year": 1928}],
+        "members": ["germany"],
+        "type": "union"
+      },
       "valid_years": [1919, 1937]
     },
     "ghana": {"era_type": "modern", "name": "Ghana (Gold Coast)", "source": {"iso3": "GHA", "layer": "ne_admin0"}},
@@ -348,7 +410,32 @@
     "hungary_transleithania": {
       "era_type": "historical",
       "name": "Kingdom of Hungary (Transleithania)",
-      "source": {"all_features": true, "layer": "hungary_transleithania"},
+      "source": {
+        "exclude_countries": ["austria_bosnia_and_hercegovina", "austria_cisleithania"],
+        "extra_admin1": [
+          {"adm0_a3": "AUT", "names": ["Burgenland"]},
+          {
+            "adm0_a3": "ROU",
+            "names": [
+              "Alba", "Arad", "Bihor", "Bistrița-Năsăud", "Brașov", "Caraș-Severin",
+              "Cluj", "Covasna", "Harghita", "Hunedoara", "Maramureș", "Mureș",
+              "Sălaj", "Satu Mare", "Sibiu", "Timiș"
+            ]
+          },
+          {"adm0_a3": "UKR", "names": ["Zakarpattia"]}
+        ],
+        "extra_gadm": [
+          {
+            "clip_to": ["serbia"],
+            "gadm_iso3": "SRB",
+            "gadm_level": 1,
+            "names": ["Južno-Bački", "Južno-Banatski", "Severno-Bački", "Severno-Banatski", "Srednje-Banatski", "Sremski", "Zapadno-Bački"]
+          },
+          {"clip_to": ["slovenia"], "gadm_iso3": "SVN", "gadm_level": 1, "names": ["Pomurska"]}
+        ],
+        "members": ["croatia_slavonia", "hungary", "slovakia"],
+        "type": "union"
+      },
       "valid_years": [1750, 1918]
     },
     "iceland": {"era_type": "modern", "name": "Iceland", "source": {"iso3": "ISL", "layer": "ne_admin0"}},
@@ -382,7 +469,7 @@
     "italian_somaliland": {
       "era_type": "historical",
       "name": "Italian Somaliland",
-      "source": {"gwcode": 5200, "layer": "cshapes_2", "year": 1935},
+      "source": {"adm0_a3": "SOM", "layer": "ne_admin0"},
       "valid_years": [1889, 1960]
     },
     "italy": {"era_type": "modern", "name": "Italy", "source": {"iso3": "ITA", "layer": "ne_admin0"}},
@@ -445,12 +532,12 @@
     "natal": {
       "era_type": "historical",
       "name": "Colony / Province of Natal",
-      "source": {"gwcode": 562, "layer": "cshapes_2", "year": 1905},
+      "source": {"adm0_a3": "ZAF", "layer": "ne_admin1", "names": ["KwaZulu-Natal"]},
       "valid_years": [1843, 1994]
     },
     "nauru": {"era_type": "modern", "name": "Nauru", "source": {"iso3": "NRU", "layer": "ne_admin0", "lonlat_fallback": [166.9315, -0.5228]}},
     "nepal": {"era_type": "modern", "name": "Nepal", "source": {"iso3": "NPL", "layer": "ne_admin0"}},
-    "netherlands": {"era_type": "modern", "name": "Netherlands", "source": {"gu_a3": "NLD", "layer": "ne_map_units"}},
+    "netherlands": {"era_type": "modern", "name": "Netherlands", "source": {"gu_a3": "NLX", "layer": "ne_map_units"}},
     "netherlands_antilles": {
       "era_type": "historical",
       "name": "Netherlands Antilles",
@@ -460,7 +547,11 @@
     "neutral_zone_arabia": {
       "era_type": "historical",
       "name": "Saudi-Kuwaiti Neutral Zone",
-      "source": {"bbox": [47.4, 28.2, 48.6, 29.1], "type": "bbox"},
+      "source": {
+        "clip_to": ["kuwait", "saudi_arabia"],
+        "coords": [[47.45, 28.98], [48.16, 28.99], [48.45, 28.53], [47.90, 28.23], [47.45, 28.98]],
+        "type": "polygon"
+      },
       "valid_years": [1922, 1970]
     },
     "new_brunswick": {"era_type": "modern", "name": "New Brunswick", "source": {"adm0_a3": "CAN", "layer": "ne_admin1", "name": "New Brunswick"}},
@@ -491,7 +582,7 @@
     "orange_free_state": {
       "era_type": "historical",
       "name": "Orange Free State",
-      "source": {"gwcode": 564, "layer": "cshapes_2", "year": 1905},
+      "source": {"adm0_a3": "ZAF", "layer": "ne_admin1", "names": ["Free State"]},
       "valid_years": [1854, 1994]
     },
     "pacific_islands_trust_territory": {
@@ -519,14 +610,18 @@
     "palestine": {
       "era_type": "historical",
       "name": "Mandatory Palestine / Palestinian Territories",
-      "source": {"gwcode": 665, "layer": "cshapes_2", "year": 1935},
+      "source": {"adm0_a3": "PSX", "extra_members": ["israel"], "layer": "ne_admin0"},
       "valid_years": [1920, 2025]
     },
     "panama": {"era_type": "modern", "name": "Panama", "source": {"iso3": "PAN", "layer": "ne_admin0"}},
     "panama_canal_zone": {
       "era_type": "historical",
       "name": "Panama Canal Zone",
-      "source": {"bbox": [-80.05, 8.85, -79.48, 9.42], "type": "bbox"},
+      "source": {
+        "clip_to": ["panama"],
+        "coords": [[-80.06, 9.32], [-79.88, 9.42], [-79.46, 8.98], [-79.62, 8.85], [-80.06, 9.32]],
+        "type": "polygon"
+      },
       "valid_years": [1903, 1979]
     },
     "papua_new_guinea": {"era_type": "modern", "name": "Papua New Guinea", "source": {"iso3": "PNG", "layer": "ne_admin0"}},
@@ -534,7 +629,7 @@
     "peninsular_malaya": {
       "era_type": "historical",
       "name": "Peninsular Malaya (Federation of Malaya)",
-      "source": {"gwcode": 820, "layer": "cshapes_2", "year": 1958},
+      "source": {"base": "malaysia", "subtract": ["sabah_and_sarawak"], "type": "difference"},
       "valid_years": [1896, 1963]
     },
     "peru": {"era_type": "modern", "name": "Peru", "source": {"iso3": "PER", "layer": "ne_admin0"}},
@@ -551,14 +646,21 @@
     "poland_second_republic": {
       "era_type": "historical",
       "name": "Second Polish Republic (1918-1939)",
-      "source": {"gwcode": 290, "layer": "cshapes_2", "year": 1930},
+      "source": {
+        "clip_to": ["belarus", "lithuania", "poland", "ukraine"],
+        "exclude_countries": ["czechoslovakia_first_republic", "latvia", "romania"],
+        "extra_layers": [{"exclude_countries": ["german_empire"], "iso3": "POL", "layer": "ne_admin0"}],
+        "gwcode": 290,
+        "layer": "cshapes_2",
+        "year": 1930
+      },
       "valid_years": [1918, 1939]
     },
     "portugal": {"era_type": "modern", "name": "Portugal", "source": {"iso3": "PRT", "layer": "ne_admin0"}},
     "portuguese_india": {
       "era_type": "historical",
       "name": "Portuguese Settlements in India (Goa, Daman, Diu)",
-      "source": {"layer": "british_india_1948", "names_2": ["Goa", "Daman", "Nagar Avely", "Diu"]},
+      "source": {"clip_to": ["india"], "layer": "british_india_1948", "names_2": ["Goa", "Daman", "Nagar Avely", "Diu"]},
       "valid_years": [1750, 1961]
     },
     "prince_edward_island": {"era_type": "modern", "name": "Prince Edward Island", "source": {"adm0_a3": "CAN", "layer": "ne_admin1", "name": "Prince Edward Island"}},
@@ -592,14 +694,20 @@
     "russian_empire": {
       "era_type": "historical",
       "name": "Russian Empire (1750-1917)",
-      "source": {"gwcode": 365, "layer": "cshapes_2", "year": 1910},
+      "source": {
+        "exclude_countries": ["austria_hungary", "german_empire"],
+        "extra_admin1": [{"adm0_a3": "TUR", "names": ["Ardahan", "Artvin", "Iğdir", "Kars"]}],
+        "members": ["finland", "poland", "ussr"],
+        "subtract_admin1": [{"adm0_a3": "RUS", "names": ["Kaliningrad", "Tuva"]}],
+        "type": "union"
+      },
       "valid_years": [1750, 1917]
     },
     "rwanda": {"era_type": "modern", "name": "Rwanda", "source": {"iso3": "RWA", "layer": "ne_admin0"}},
     "sabah": {
       "era_type": "historical",
       "name": "Sabah (British North Borneo)",
-      "source": {"gwcode": 823, "layer": "cshapes_2", "year": 1955},
+      "source": {"adm0_a3": "MYS", "layer": "ne_admin1", "names": ["Labuan", "Sabah"]},
       "valid_years": [1881, 2025]
     },
     "sabah_and_sarawak": {
@@ -613,7 +721,7 @@
     "sarawak": {
       "era_type": "historical",
       "name": "Sarawak",
-      "source": {"gwcode": 824, "layer": "cshapes_2", "year": 1955},
+      "source": {"adm0_a3": "MYS", "layer": "ne_admin1", "names": ["Sarawak"]},
       "valid_years": [1841, 2025]
     },
     "saudi_arabia": {"era_type": "modern", "name": "Saudi Arabia", "source": {"iso3": "SAU", "layer": "ne_admin0"}},
@@ -633,27 +741,39 @@
     "slovakia": {"era_type": "modern", "name": "Slovakia", "source": {"iso3": "SVK", "layer": "ne_admin0"}},
     "slovenia": {"era_type": "modern", "name": "Slovenia", "source": {"iso3": "SVN", "layer": "ne_admin0"}},
     "solomon_islands": {"era_type": "modern", "name": "Solomon Islands", "source": {"iso3": "SLB", "layer": "ne_admin0"}},
-    "somalia": {"era_type": "modern", "name": "Somalia", "source": {"adm0_a3": "SOM", "layer": "ne_admin0"}},
+    "somalia": {"era_type": "modern", "name": "Somalia", "source": {"members": ["british_somaliland", "italian_somaliland"], "type": "union"}},
     "south_africa": {"era_type": "modern", "name": "South Africa", "source": {"iso3": "ZAF", "layer": "ne_admin0"}},
     "south_australia": {"era_type": "modern", "name": "South Australia", "source": {"adm0_a3": "AUS", "layer": "ne_admin1", "name": "South Australia"}},
     "south_korea": {"era_type": "modern", "name": "South Korea (Republic of Korea)", "source": {"iso3": "KOR", "layer": "ne_admin0"}},
     "south_vietnam": {
       "era_type": "historical",
       "name": "South Vietnam (Republic of Vietnam)",
-      "source": {"gwcode": 817, "layer": "cshapes_2", "year": 1965},
+      "source": {
+        "adm0_a3": "VNM",
+        "layer": "ne_admin1",
+        "names": [
+          "An Giang", "Bà Rịa - Vũng Tàu", "Bạc Liêu", "Bến Tre", "Bình Định",
+          "Bình Dương", "Bình Phước", "Bình Thuận", "Cà Mau", "Can Tho",
+          "Đà Nẵng", "Đắk Lắk", "Đắk Nông", "Ðong Tháp", "Đông Nam Bộ",
+          "Gia Lai", "Hau Giang", "Hồ Chí Minh city", "Khánh Hòa", "Kiên Giang",
+          "Kon Tum", "Lâm Đồng", "Long An", "Ninh Thuận", "Phú Yên",
+          "Quàng Nam", "Quảng Ngãi", "Quảng Trị", "Sóc Trăng", "Tây Ninh",
+          "Thừa Thiên - Huế", "Tiền Giang", "Trà Vinh", "Vĩnh Long"
+        ]
+      },
       "valid_years": [1954, 1975]
     },
     "south_yemen": {
       "era_type": "historical",
       "name": "South Yemen (Aden / People's Democratic Republic of Yemen)",
-      "source": {"gwcode": 680, "layer": "cshapes_2", "year": 1975},
+      "source": {"base": "yemen", "subtract": ["yemen_north"], "type": "difference"},
       "valid_years": [1839, 1990]
     },
     "spain": {"era_type": "modern", "name": "Spain", "source": {"iso3": "ESP", "layer": "ne_admin0"}},
     "spanish_morocco": {
       "era_type": "historical",
       "name": "Spanish Protectorate in Morocco",
-      "source": {"gwcode": 602, "layer": "cshapes_2", "year": 1935},
+      "source": {"clip_to": ["morocco"], "gwcode": 602, "layer": "cshapes_2", "year": 1935},
       "valid_years": [1912, 1956]
     },
     "sri_lanka": {"era_type": "modern", "name": "Sri Lanka (Ceylon)", "source": {"iso3": "LKA", "layer": "ne_admin0"}},
@@ -676,7 +796,7 @@
     "sudan": {
       "era_type": "modern",
       "name": "Sudan",
-      "source": {"gwcode": 625, "layer": "cshapes_2", "year": 1980},
+      "source": {"adm0_a3_list": ["SDN", "SDS"], "layer": "ne_admin0"},
       "temporal_eras": [
         {"end_year": 2011, "entity_id": "sudan", "label": "Anglo-Egyptian / Republic of Sudan (pre-2011)", "start_year": 1899},
         {"end_year": 2025, "entity_id": "sudan_post_2011", "label": "Sudan (post-2011)", "start_year": 2011}
@@ -693,7 +813,7 @@
     "tanganyika": {
       "era_type": "historical",
       "name": "Tanganyika Territory",
-      "source": {"gwcode": 510, "layer": "cshapes_2", "year": 1955},
+      "source": {"base": "tanzania", "subtract": ["zanzibar"], "type": "difference"},
       "valid_years": [1919, 1964]
     },
     "tanzania": {"era_type": "modern", "name": "Tanzania", "source": {"iso3": "TZA", "layer": "ne_admin0"}},
@@ -704,7 +824,7 @@
     "transvaal": {
       "era_type": "historical",
       "name": "Transvaal (South African Republic)",
-      "source": {"gwcode": 563, "layer": "cshapes_2", "year": 1905},
+      "source": {"adm0_a3": "ZAF", "layer": "ne_admin1", "names": ["Gauteng", "Limpopo", "Mpumalanga", "North West"]},
       "valid_years": [1852, 1994]
     },
     "trinidad_and_tobago": {"era_type": "modern", "name": "Trinidad and Tobago", "source": {"iso3": "TTO", "layer": "ne_admin0"}},
@@ -743,7 +863,14 @@
     "ussr": {
       "era_type": "historical",
       "name": "Union of Soviet Socialist Republics (USSR)",
-      "source": {"gwcode": 365, "layer": "cshapes_2", "year": 1965},
+      "source": {
+        "members": [
+          "armenia", "azerbaijan", "belarus", "estonia", "georgia",
+          "kazakhstan", "kyrgyzstan", "latvia", "lithuania", "moldova",
+          "russia", "tajikistan", "turkmenistan", "ukraine", "uzbekistan"
+        ],
+        "type": "union"
+      },
       "valid_years": [1922, 1991]
     },
     "uzbekistan": {"era_type": "modern", "name": "Uzbekistan", "source": {"iso3": "UZB", "layer": "ne_admin0"}},
@@ -755,7 +882,7 @@
     "west_germany": {
       "era_type": "historical",
       "name": "West Germany (Federal Republic of Germany, 1949-1990)",
-      "source": {"gwcode": 260, "layer": "cshapes_2", "year": 1970},
+      "source": {"base": "germany", "subtract": ["east_germany"], "type": "difference"},
       "valid_years": [1945, 1990]
     },
     "west_pakistan": {
@@ -778,13 +905,23 @@
     "yemen_north": {
       "era_type": "historical",
       "name": "North Yemen (Mutawakkilite Kingdom / Yemen Arab Republic)",
-      "source": {"gwcode": 678, "layer": "cshapes_2", "year": 1975},
+      "source": {
+        "adm0_a3": "YEM",
+        "layer": "ne_admin1",
+        "names": [
+          "Al Bayda'", "Al Hudaydah", "Al Jawf", "Al Mahwit", "Amanat Al Asimah",
+          "Amran", "Dhamar", "Hajjah", "Ibb", "Ma'rib", "Raymah", "Sa`dah", "Sana'a", "Ta`izz"
+        ]
+      },
       "valid_years": [1918, 1990]
     },
     "yugoslavia": {
       "era_type": "historical",
       "name": "Yugoslavia",
-      "source": {"gwcode": 345, "layer": "cshapes_2", "year": 1970},
+      "source": {
+        "members": ["bosnia_and_herzegovina", "croatia", "kosovo", "macedonia", "montenegro", "serbia", "slovenia"],
+        "type": "union"
+      },
       "temporal_eras": [
         {"end_year": 1991, "entity_id": "yugoslavia", "label": "Kingdom / SFR Yugoslavia (1918-1991)", "start_year": 1918},
         {"end_year": 2006, "entity_id": "federal_republic_of_yugoslavia", "label": "FR Yugoslavia / Serbia and Montenegro", "start_year": 1992}
@@ -796,7 +933,11 @@
     "zanzibar": {
       "era_type": "historical",
       "name": "Zanzibar",
-      "source": {"gwcode": 511, "layer": "cshapes_2", "year": 1955},
+      "source": {
+        "adm0_a3": "TZA",
+        "layer": "ne_admin1",
+        "names": ["Kaskazini-Pemba", "Kaskazini-Unguja", "Kusini-Pemba", "Zanzibar South and Central", "Zanzibar West"]
+      },
       "valid_years": [1856, 1964]
     },
     "zimbabwe": {"era_type": "modern", "name": "Zimbabwe (Southern Rhodesia)", "source": {"iso3": "ZWE", "layer": "ne_admin0"}}

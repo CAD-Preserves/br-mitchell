@@ -3,7 +3,6 @@
 import math
 import os
 import sys
-import cv2
 import numpy as np
 from PIL import Image
 from shapely.geometry import MultiPolygon, Point, Polygon, box, shape
@@ -15,7 +14,7 @@ class EquirectangularRasteriser:
 
   def __init__ (self, arg1_grid_config_obj=None):
     """
-    @brief Initialise EquirectangularRasteriser with target pixel dimensions and supersampling factor.
+    @brief Initialise EquirectangularRasteriser with target pixel dimensions and float64 pixel-centre lookup tables.
     @param arg1_grid_config_obj Grid configuration dictionary from areal_mask_config.json5.
     """
     #Convert from parameters
@@ -25,9 +24,10 @@ class EquirectangularRasteriser:
     self.crs = str(grid_config_obj.get("crs", "EPSG:4326"))
     self.height = int(grid_config_obj.get("height", 2160))
     self.pixels_per_degree = float(grid_config_obj.get("pixels_per_degree", 12.0))
-    self.supersample = max(1, int(grid_config_obj.get("supersample_factor", 2)))
-    self.total_pixels = self.getConfiguredWidth(grid_config_obj)*self.height
     self.width = self.getConfiguredWidth(grid_config_obj)
+    self.lat_centres = 90.0 - (np.arange(self.height, dtype=np.float64) + 0.5)/self.pixels_per_degree
+    self.lon_centres = -180.0 + (np.arange(self.width, dtype=np.float64) + 0.5)/self.pixels_per_degree
+    self.total_pixels = self.width*self.height
 
 
   def A_rasteriseGeometry (self, arg1_geometry_obj, arg2_options=None):
@@ -48,6 +48,7 @@ class EquirectangularRasteriser:
       options["fallback_lonlat"] = None
 
     #Declare local instance variables
+    combined_array = None
     empty_array = np.zeros(0, dtype=np.int32)
     fallback_pt = options["fallback_lonlat"]
     flat_indices_list = []
@@ -58,7 +59,7 @@ class EquirectangularRasteriser:
     poly_list = self.extractPolygons(geometry_obj)
     if not poly_list:
       if fallback_pt is not None and len(fallback_pt) >= 2:
-        return self.rasterisePointDisc(float(fallback_pt[0]), float(fallback_pt[1]), 0.04)
+        return self.lonLatToFlatIndexArray(float(fallback_pt[0]), float(fallback_pt[1]))
       sys.stderr.write("Console error: empty geometry passed to A_rasteriseGeometry.\n")
       return empty_array
 
@@ -120,6 +121,46 @@ class EquirectangularRasteriser:
 
     #Return statement
     return True
+
+
+  def clipIndicesWithFallback (self, arg1_flat_indices, arg2_clip_indices):
+    """
+    @brief Intersect a flat pixel index mask with a target mask, snapping to the nearest target pixel if small territory drops to 0.
+    @param arg1_flat_indices Sorted 1D numpy int32 array of source entity pixels.
+    @param arg2_clip_indices Sorted 1D numpy int32 array of allowed target pixels.
+    @return Sorted 1D numpy int32 array of clipped pixel indices.
+    """
+    #Convert from parameters
+    flat_indices = arg1_flat_indices
+    clip_indices = arg2_clip_indices
+
+    #Declare local instance variables
+    best_i = 0
+    clipped = None
+    cx = 0.0
+    cy = 0.0
+    dists = None
+    tx = None
+    ty = None
+
+    if not isinstance(flat_indices, np.ndarray) or flat_indices.size == 0:
+      return np.zeros(0, dtype=np.int32)
+    if not isinstance(clip_indices, np.ndarray) or clip_indices.size == 0:
+      return flat_indices
+
+    clipped = np.intersect1d(flat_indices, clip_indices, assume_unique=True)
+    if clipped.size > 0:
+      return clipped
+
+    cx = float((flat_indices % self.width).mean())
+    cy = float((flat_indices // self.width).mean())
+    tx = (clip_indices % self.width).astype(np.float64)
+    ty = (clip_indices // self.width).astype(np.float64)
+    dists = (tx - cx)*(tx - cx) + (ty - cy)*(ty - cy)
+    best_i = int(np.argmin(dists))
+
+    #Return statement
+    return np.array([int(clip_indices[best_i])], dtype=np.int32)
 
 
   def computeMaskMetrics (self, arg1_flat_indices):
@@ -241,6 +282,19 @@ class EquirectangularRasteriser:
     return polygons_array
 
 
+  def getConfiguredWidth (self, arg1_grid_config_obj):
+    """
+    @brief Read validated grid width from configuration dictionary.
+    @param arg1_grid_config_obj Grid configuration dictionary.
+    @return Positive integer width (default 4320).
+    """
+    #Convert from parameters
+    grid_config_obj = arg1_grid_config_obj if isinstance(arg1_grid_config_obj, dict) else {}
+
+    #Return statement
+    return int(grid_config_obj.get("width", 4320))
+
+
   def lonLatToFlatIndexArray (self, arg1_lon, arg2_lat):
     """
     @brief Convert a single WGS84 (lon, lat) coordinate into a 1-element int32 flat pixel index array.
@@ -330,83 +384,178 @@ class EquirectangularRasteriser:
 
   def rasteriseSinglePolygon (self, arg1_polygon):
     """
-    @brief Scanline-rasterise a single non-dateline-crossing Shapely Polygon (exterior minus interior holes).
+    @brief Scanline-rasterise a single non-dateline-crossing Shapely Polygon via exact half-open float64 pixel-centre containment.
     @param arg1_polygon Shapely Polygon within [-180, 180] x [-90, 90].
-    @return Sorted 1D numpy int32 array of flat pixel indices.
+    @return Sorted 1D numpy int32 array of flat pixel indices with zero shared-edge overlap across adjacent polygons.
     """
     #Convert from parameters
     polygon = arg1_polygon
 
     #Declare local instance variables
     bounds = None
-    crop_h = 0
-    crop_mask = None
-    crop_w = 0
+    dx_dy = None
     empty_array = np.zeros(0, dtype=np.int32)
-    ext_coords = None
-    ext_pts = None
-    hit_x = None
-    hit_y = None
-    hole_pts_list = []
-    max_gx = 0
     max_gy = 0
-    min_gx = 0
     min_gy = 0
-    scale = self.pixels_per_degree*self.supersample
-    ss = self.supersample
-    sub_h = 0
-    sub_mask = None
-    sub_w = 0
+    rings_list = []
+    row_spans = []
+    x_hi = None
+    x_hi_list = []
+    x_lo = None
+    x_lo_list = []
+    y_hi = None
+    y_hi_list = []
+    y_lo = None
+    y_lo_list = []
 
     if polygon is None or polygon.is_empty:
       return empty_array
 
     bounds = polygon.bounds
-    min_gx = max(0, int(math.floor((bounds[0] + 180.0)*self.pixels_per_degree)) - 1)
-    max_gx = min(self.width - 1, int(math.ceil((bounds[2] + 180.0)*self.pixels_per_degree)) + 1)
     min_gy = max(0, int(math.floor((90.0 - bounds[3])*self.pixels_per_degree)) - 1)
     max_gy = min(self.height - 1, int(math.ceil((90.0 - bounds[1])*self.pixels_per_degree)) + 1)
-
-    if max_gx < min_gx or max_gy < min_gy:
+    if max_gy < min_gy:
       return empty_array
 
-    crop_w = max_gx - min_gx + 1
-    crop_h = max_gy - min_gy + 1
-    sub_w = crop_w*ss
-    sub_h = crop_h*ss
-    sub_mask = np.zeros((sub_h, sub_w), dtype=np.uint8)
+    rings_list.append(np.asarray(polygon.exterior.coords, dtype=np.float64))
+    for i in range(len(polygon.interiors)):
+      rings_list.append(np.asarray(polygon.interiors[i].coords, dtype=np.float64))
 
-    ext_coords = np.asarray(polygon.exterior.coords, dtype=np.float64)
-    if ext_coords.shape[0] < 3:
+    for i in range(len(rings_list)):
+      local_r = rings_list[i]
+      if local_r.shape[0] < 4:
+        continue
+      ax = local_r[:-1, 0]
+      ay = local_r[:-1, 1]
+      bx = local_r[1:, 0]
+      by = local_r[1:, 1]
+      non_horiz = ay != by
+      if not np.any(non_horiz):
+        continue
+      ax = ax[non_horiz]
+      ay = ay[non_horiz]
+      bx = bx[non_horiz]
+      by = by[non_horiz]
+      swap_mask = ay > by
+      x_lo_list.append(np.where(swap_mask, bx, ax))
+      y_lo_list.append(np.where(swap_mask, by, ay))
+      x_hi_list.append(np.where(swap_mask, ax, bx))
+      y_hi_list.append(np.where(swap_mask, ay, by))
+
+    if not x_lo_list:
       return empty_array
 
-    ext_pts = np.empty((ext_coords.shape[0], 2), dtype=np.int32)
-    ext_pts[:, 0] = np.round((ext_coords[:, 0] + 180.0)*scale - min_gx*ss).astype(np.int32)
-    ext_pts[:, 1] = np.round((90.0 - ext_coords[:, 1])*scale - min_gy*ss).astype(np.int32)
-    cv2.fillPoly(sub_mask, [ext_pts], 1)
+    x_lo = np.concatenate(x_lo_list)
+    y_lo = np.concatenate(y_lo_list)
+    x_hi = np.concatenate(x_hi_list)
+    y_hi = np.concatenate(y_hi_list)
+    dx_dy = (x_hi - x_lo)/(y_hi - y_lo)
 
-    if len(polygon.interiors) > 0:
-      for i in range(len(polygon.interiors)):
-        local_ring = np.asarray(polygon.interiors[i].coords, dtype=np.float64)
-        if local_ring.shape[0] >= 3:
-          local_pts = np.empty((local_ring.shape[0], 2), dtype=np.int32)
-          local_pts[:, 0] = np.round((local_ring[:, 0] + 180.0)*scale - min_gx*ss).astype(np.int32)
-          local_pts[:, 1] = np.round((90.0 - local_ring[:, 1])*scale - min_gy*ss).astype(np.int32)
-          hole_pts_list.append(local_pts)
-      if hole_pts_list:
-        cv2.fillPoly(sub_mask, hole_pts_list, 0)
-
-    if ss > 1:
-      crop_mask = sub_mask.reshape(crop_h, ss, crop_w, ss).any(axis=(1, 3))
-    else:
-      crop_mask = sub_mask > 0
-
-    hit_y, hit_x = np.nonzero(crop_mask)
-    if hit_y.size == 0:
-      return empty_array
+    for i in range(min_gy, max_gy + 1):
+      yc = self.lat_centres[i]
+      active_mask = (y_lo <= yc) & (yc < y_hi)
+      if not np.any(active_mask):
+        continue
+      x_ints = x_lo[active_mask] + (yc - y_lo[active_mask])*dx_dy[active_mask]
+      x_ints.sort()
+      num_pairs = x_ints.size // 2
+      if num_pairs == 0:
+        continue
+      gx_starts = np.searchsorted(self.lon_centres, x_ints[0:2*num_pairs:2], side="left")
+      gx_ends = np.searchsorted(self.lon_centres, x_ints[1:2*num_pairs:2], side="left")
+      row_base = i*self.width
+      for x in range(num_pairs):
+        local_s = int(gx_starts[x])
+        local_e = int(gx_ends[x])
+        if local_e > local_s:
+          row_spans.append(row_base + np.arange(local_s, local_e, dtype=np.int32))
 
     #Return statement
-    return ((hit_y.astype(np.int32) + min_gy)*self.width + (hit_x.astype(np.int32) + min_gx))
+    return np.concatenate(row_spans) if row_spans else empty_array
+
+
+  def snapPartitionToTargetMask (self, arg1_members_map, arg2_target_indices, arg3_options=None):
+    """
+    @brief Clip a map of sub-division masks to a canonical parent mask, optionally enforcing pairwise disjointness and filling uncovered coastal pixels.
+    @param arg1_members_map Dictionary mapping entity_id -> sorted 1D int32 flat pixel array.
+    @param arg2_target_indices Sorted 1D int32 flat pixel array of the canonical parent territory.
+    @param arg3_options Optional dictionary with disjoint (default False), fill_uncovered (default True), and priority_keys (default []).
+    @return Dictionary mapping entity_id -> snapped sorted 1D int32 flat pixel array.
+    """
+    #Convert from parameters
+    members_map = arg1_members_map if isinstance(arg1_members_map, dict) else {}
+    target_indices = arg2_target_indices
+    options = arg3_options if isinstance(arg3_options, dict) else {}
+
+    #Initialise options
+    if "disjoint" not in options:
+      options["disjoint"] = False
+    if "fill_uncovered" not in options:
+      options["fill_uncovered"] = True
+    if "priority_keys" not in options:
+      options["priority_keys"] = []
+
+    #Declare local instance variables
+    claimed_px = np.zeros(0, dtype=np.int32)
+    covered_owner = []
+    covered_px = []
+    disjoint_flag = bool(options["disjoint"])
+    eids_ordered = []
+    fill_uncovered = bool(options["fill_uncovered"])
+    out_map = {}
+    priority_list = options["priority_keys"] if isinstance(options["priority_keys"], list) else []
+    seen_eids = set()
+    uncovered_px = None
+
+    for i in range(len(priority_list)):
+      local_pk = str(priority_list[i])
+      if local_pk in members_map and local_pk not in seen_eids:
+        eids_ordered.append(local_pk)
+        seen_eids.add(local_pk)
+    for local_k in sorted(members_map.keys()):
+      if local_k not in seen_eids:
+        eids_ordered.append(local_k)
+        seen_eids.add(local_k)
+
+    if not isinstance(target_indices, np.ndarray) or target_indices.size == 0 or not eids_ordered:
+      return dict(members_map)
+
+    for i in range(len(eids_ordered)):
+      local_eid = eids_ordered[i]
+      local_clipped = self.clipIndicesWithFallback(members_map[local_eid], target_indices)
+      if disjoint_flag and claimed_px.size > 0 and local_clipped.size > 1:
+        local_dedup = np.setdiff1d(local_clipped, claimed_px, assume_unique=True)
+        if local_dedup.size > 0:
+          local_clipped = local_dedup
+      out_map[local_eid] = local_clipped
+      if local_clipped.size > 0:
+        if disjoint_flag:
+          claimed_px = np.unique(np.concatenate([claimed_px, local_clipped])) if claimed_px.size > 0 else local_clipped
+        covered_px.append(local_clipped)
+        covered_owner.append(np.full(local_clipped.size, i, dtype=np.int32))
+
+    if fill_uncovered and covered_px:
+      all_cov = np.concatenate(covered_px)
+      all_own = np.concatenate(covered_owner)
+      uncovered_px = np.setdiff1d(target_indices, np.unique(all_cov), assume_unique=True)
+      if uncovered_px.size > 0:
+        cov_x = (all_cov % self.width).astype(np.int32)
+        cov_y = (all_cov // self.width).astype(np.int32)
+        unc_x = (uncovered_px % self.width).astype(np.int32)
+        unc_y = (uncovered_px // self.width).astype(np.int32)
+        extra_buckets = [[] for _ in range(len(eids_ordered))]
+        for i in range(uncovered_px.size):
+          dx = cov_x - unc_x[i]
+          dy = cov_y - unc_y[i]
+          best_k = int(np.argmin(dx*dx + dy*dy))
+          extra_buckets[int(all_own[best_k])].append(int(uncovered_px[i]))
+        for i in range(len(eids_ordered)):
+          if extra_buckets[i]:
+            local_eid = eids_ordered[i]
+            out_map[local_eid] = np.unique(np.concatenate([out_map[local_eid], np.array(extra_buckets[i], dtype=np.int32)]))
+
+    #Return statement
+    return out_map
 
 
   def splitAntimeridianPolygon (self, arg1_polygon):
@@ -436,7 +585,6 @@ class EquirectangularRasteriser:
       if diffs.max() < 180.0:
         return [polygon]
 
-    # Unwrap longitudes to [0, 360] when jump > 180 deg occurs (e.g. Chukotka, Fiji, Kiribati)
     try:
       unwrapped_ext = coords.copy()
       unwrapped_ext[:, 0] = np.where(unwrapped_ext[:, 0] < 0.0, unwrapped_ext[:, 0] + 360.0, unwrapped_ext[:, 0])
@@ -465,16 +613,3 @@ class EquirectangularRasteriser:
 
     #Return statement
     return parts_array if parts_array else [polygon]
-
-
-  def getConfiguredWidth (self, arg1_grid_config_obj):
-    """
-    @brief Read validated grid width from configuration dictionary.
-    @param arg1_grid_config_obj Grid configuration dictionary.
-    @return Positive integer width (default 4320).
-    """
-    #Convert from parameters
-    grid_config_obj = arg1_grid_config_obj if isinstance(arg1_grid_config_obj, dict) else {}
-
-    #Return statement
-    return int(grid_config_obj.get("width", 4320))

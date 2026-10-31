@@ -6,7 +6,7 @@
     "height": 2160,
     "pixels_per_degree": 12.0,
     "projection": "WGS84 Equirectangular",
-    "supersample_factor": 2,
+    "raster_method": "scanline_pixel_centre",
     "width": 4320
   },
 
@@ -116,6 +116,12 @@
       "uk_counties": {
         "format": "geojson",
         "url": "https://raw.githubusercontent.com/evansd/uk-ceremonial-counties/master/uk-ceremonial-counties.geojson"
+      },
+      "uk_historic_counties": {
+        "archive_member_dbf": "UKDefinitionA.dbf",
+        "archive_member_shp": "UKDefinitionA.shp",
+        "format": "shapefile_zip",
+        "url": "https://www.county-borders.co.uk/UKDefinitionA_WG84_Simplified.zip"
       }
     },
     "gadm_template": "https://geodata.ucdavis.edu/gadm/gadm4.1/json/gadm41_£1£_£2£.json",
