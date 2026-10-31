@@ -1,5 +1,36 @@
 # API Reference (`core/`)
 
+## `AdminDivisionMaskResolver.py`
+
+@brief Resolves modern and historical administrative divisions (1750-2025) across all 57 IHS A3 sub-tables.
+
+* **`AdminDivisionMaskResolver`** ÔÇö @brief Resolves sub-national states, provinces, crownlands, guberniyas, counties, Bezirke, and princely agencies.
+* **`A_discoverDelegatedCityKeys`** ÔÇö @brief Step A: Scan all A3 section dictionaries and return city keys delegated to CityMaskResolver (europe/A3 spillovers).
+* **`B_resolveAllAdminDivisions`** ÔÇö @brief Step B: Resolve and rasterise every administrative division stem and parent A3 group across all three volumes.
+* **`cleanDivisionStem`** ÔÇö @brief Strip trailing census years, footnotes, leading OCR column numbers, and '_revised' from an A3 series key.
+* **`extractGroupStems`** ÔÇö @brief Group all raw census series keys inside an A3 group dictionary into clean division stems and active year spans.
+* **`matchAdmin1ByNamesOrRegions`** ÔÇö @brief Match features in ne_admin1 by country code and state/province names or region names.
+* **`matchGadmFeatures`** ÔÇö @brief Match features in a UC Davis GADM 4.1 country/level layer using compact space-insensitive ASCII slugs.
+* **`matchGermany1914Features`** ÔÇö @brief Match 1914 Imperial German constituent states (STAAT_NAME) or Regierungsbezirke (REG_NAME).
+* **`matchRussia1897Features`** ÔÇö @brief Match 1897 Russian Empire governorates / oblasts by source_english property.
+* **`matchUkCountiesFeatures`** ÔÇö @brief Match UK ceremonial / historic counties from uk_counties, with automatic ne_admin1 GBR fallback.
+* **`resolveRuleGeometryIndices`** ÔÇö @brief Execute the configured geospatial lookup and scanline rasterisation for a single division rule.
+* **`resolveSingleDivision`** ÔÇö @brief Resolve and cache a single canonical administrative division entity ('admin:<prefix>:<clean_stem>').
+* **`resolveSpilledGroupHeaderMask`** ÔÇö @brief Provide explicit polygon indices when an A3 group key itself is a page-break spilled division (e.g. 'ufa', 'sardinia').
+
+## `ArealMaskPipeline.py`
+
+@brief End-to-end orchestrator and verifier for BR Mitchell WGS84 Equirectangular (4320x2160) areal masks.
+
+* **`ArealMaskPipeline`** ÔÇö @brief Orchestrates online vector fetching, country/subadmin/city resolution, provinces.png synthesis and 100% corpus verification.
+* **`A_loadCorpusSections`** ÔÇö @brief Step A: Load all digitised IHS section JSON files across africa_asia_oceania, americas and europe.
+* **`B_resolveAllEntities`** ÔÇö @brief Step B: Resolve all whole countries, individual city [lng, lat] points and sub-national administrative divisions.
+* **`C_synthesiseRasters`** ÔÇö @brief Step C: Synthesise provinces.png (4320x2160 RGB) and register parent A3 group colourcode lists.
+* **`D_buildFlatMaskMaps`** ÔÇö @brief Step D: Construct the 3 flat dictionaries: country_masks_map, subadmin_masks_map and city_masks_map.
+* **`E_runFullPipeline`** ÔÇö @brief Step E: Execute the full areal mask synthesis pipeline, export the 3 flat JSON maps and verify 100% coverage.
+* **`mergeEntityRgbLists`** ÔÇö @brief Merge and sort unique [R, G, B] triplets across one or more canonical entity IDs.
+* **`verifyCompleteDeliverables`** ÔÇö @brief Reload provinces.png and the 3 exported flat JSON maps from disk and verify 100% of output/json locations.
+
 ## `BraceAndCellResolver.py`
 
 @brief Curly-brace span resolver, cell token merger, and statistical numeric/footnote parser.
@@ -17,6 +48,18 @@
 * **`parseNumericToken`** ÔÇö @brief Parse a statistical string into an int/float value, clean display string, bracketed flag, and extra footnotes.
 * **`stripAttachedTitleFootnotes`** ÔÇö @brief Separate unsplit footnote digits attached to years ('199069') or names ('Australia86', 'New Zealand1,87').
 
+## `CityMaskResolver.py`
+
+@brief Resolves individual city [lng, lat] coordinates via Wikipedia GeoHack, Photon (OpenStreetMap) and Nominatim.
+
+* **`CityMaskResolver`** ÔÇö @brief Geocodes all corpus cities to WGS84 [lng, lat] coordinates using GeoHack, Photon OSM and Nominatim.
+* **`A_resolveAllCities`** ÔÇö @brief Step A: Geocode all unique city keys via Wikipedia GeoHack and Photon OSM into [lng, lat] coordinates.
+* **`buildCityQueryPlan`** ÔÇö @brief Construct Wikipedia GeoHack title and Photon OpenStreetMap query parameters for a city key.
+* **`fetchPhotonForMissing`** ÔÇö @brief Query Photon OpenStreetMap API sequentially for cities unresolved by Wikipedia GeoHack and persist disk cache.
+* **`isNonCityCorpusKey`** ÔÇö @brief Check whether an A4 corpus key is an explicit country spillover (e.g. americas:A4:canada).
+* **`queryPhotonSingle`** ÔÇö @brief Perform a single HTTP GET against Photon OSM API and indicate whether HTTP 200 succeeded.
+* **`selectBestCoordinates`** ÔÇö @brief Cross-validate Wikipedia GeoHack and Photon OSM coordinates for a city, falling back to Nominatim point lookup if needed.
+
 ## `ConfigLoader.py`
 
 @brief Configuration and localisation loader for the table digitisation pipeline.
@@ -26,6 +69,61 @@
 * **`formatLocalisedString`** ÔÇö @brief Format a localised UI/CLI message replacing £1£, £2£, ... delimiters.
 * **`loadAllConfigs`** ÔÇö @brief Load pipeline_config.json5, volumes_config.json5, and active locale file.
 * **`loadJson5File`** ÔÇö @brief Parse a JSON or JSON5 file from disk safely without throwing unhandled exceptions.
+
+## `CountryMaskResolver.py`
+
+@brief Resolves modern, colonial, and historical whole-country areal masks (1750-2025) from online vector layers.
+
+* **`CountryMaskResolver`** ÔÇö @brief Resolves canonical country definitions and maps corpus location keys to canonical country entities.
+* **`A_resolveAllCountries`** ÔÇö @brief Step A: Rasterise all canonical modern and historical country entities onto the 4320x2160 grid.
+* **`B_resolveCorpusCountryKey`** ÔÇö @brief Step B: Resolve a raw corpus JSON location key to one or more canonical country IDs.
+* **`extractCandidateTokens`** ÔÇö @brief Generate progressive prefix/suffix-stripped slug candidates from an OCR or footnote-suffixed corpus key.
+* **`matchAdmin0Features`** ÔÇö @brief Match features in ne_admin0, ne_map_units, or ne_subunits using ISO_A3, ADM0_A3, GU_A3, or SU_A3 codes.
+* **`matchAdmin1Features`** ÔÇö @brief Match state/province features in ne_admin1 for sub-national country entries (e.g. Alaska, Hawaii, Java & Madura).
+* **`matchBritishIndiaFeatures`** ÔÇö @brief Match features from the 1948 British India shapefile layer (e.g. Portuguese Settlements in India).
+* **`matchCshapesFeatures`** ÔÇö @brief Match historical sovereign or colonial state polygons in ETH Zürich CShapes 2.0 by gwcode and target year.
+* **`matchHistoricalBasemapFeatures`** ÔÇö @brief Match features from historical world basemap GeoJSONs (e.g. hist_1880) or single-territory historical layers.
+* **`normaliseTargetList`** ÔÇö @brief Convert a string or list of country IDs into a validated list of canonical country IDs.
+* **`resolveSingleCountry`** ÔÇö @brief Resolve and rasterise a single canonical country entity (supporting recursive union and set difference).
+* **`scanSubObjectCountries`** ÔÇö @brief Extract canonical country IDs embedded in nested time-series sub-keys (e.g. 'austria_1950', 'japan_1970').
+
+## `EquirectangularRasteriser.py`
+
+@brief WGS84 Equirectangular scanline polygon rasteriser and lossless PNG exporter.
+
+* **`EquirectangularRasteriser`** ÔÇö @brief Scanline-rasterises WGS84 GeoJSON/Shapely geometries onto a 4320x2160 Equirectangular grid.
+* **`A_rasteriseGeometry`** ÔÇö @brief Step A: Scanline-rasterise a GeoJSON dict, Shapely geometry, or list of geometries to sorted flat pixel indices.
+* **`B_exportRgbPng`** ÔÇö @brief Step B: Export a (height, width, 3) uint8 RGB numpy buffer as a lossless PNG image.
+* **`computeMaskMetrics`** ÔÇö @brief Compute pixel count, pixel bounding box, WGS84 bounding box, and WGS84 centroid from flat pixel indices.
+* **`extractPolygons`** ÔÇö @brief Recursively unpack GeoJSON dicts, Feature dicts, or Shapely geometries into valid Shapely Polygons.
+* **`lonLatToFlatIndexArray`** ÔÇö @brief Convert a single WGS84 (lon, lat) coordinate into a 1-element int32 flat pixel index array.
+* **`rasteriseBbox`** ÔÇö @brief Rasterise a WGS84 bounding box [west, south, east, north] directly to flat pixel indices.
+* **`rasterisePointDisc`** ÔÇö @brief Rasterise an equirectangular urban disc centred at (lon, lat) with latitude cosine compensation.
+* **`rasteriseSinglePolygon`** ÔÇö @brief Scanline-rasterise a single non-dateline-crossing Shapely Polygon (exterior minus interior holes).
+* **`splitAntimeridianPolygon`** ÔÇö @brief Split polygons that wrap across the +-180 degree antimeridian into valid [-180, 180] parts.
+* **`getConfiguredWidth`** ÔÇö @brief Read validated grid width from configuration dictionary.
+
+## `GeoJsonFetcher.py`
+
+@brief Online GeoJSON, GADM archive, ESRI Shapefile, Wikipedia GeoHack, Photon OSM and Nominatim fetcher.
+
+* **`GeoJsonFetcher`** ÔÇö @brief Downloads, caches, and parses online vector boundary layers and city geocoding APIs.
+* **`A_fetchBaseLayer`** ÔÇö @brief Step A: Fetch and parse a configured base geospatial layer (GeoJSON or zipped WGS84 ESRI Shapefile).
+* **`B_fetchGadmLayer`** ÔÇö @brief Step B: Fetch UC Davis GADM 4.1 GeoJSON (plain .json or .json.zip) for an ISO3 country and admin level.
+* **`C_fetchWikipediaCoordinatesBatch`** ÔÇö @brief Step C: Batch-query Wikipedia GeoData API (GeoHack source) for article coordinates (up to 50 titles/call).
+* **`D_fetchPhotonCity`** ÔÇö @brief Step D: Query Photon (photon.komoot.io/api/) for OpenStreetMap city coordinates and extent bounding box.
+* **`E_fetchNominatimPolygon`** ÔÇö @brief Step E: Fetch a GeoJSON polygon from Nominatim OpenStreetMap search with polite 1,1 s rate limiting and disk caching.
+* **`F_fetchNominatimCityPoint`** ÔÇö @brief Step F: Fetch exact city-centre (lon, lat) and bounding box from Nominatim OpenStreetMap search.
+* **`downloadUrlToFile`** ÔÇö @brief Download an HTTP URL to disk atomically with retry support.
+* **`healFeatureCollectionStrings`** ÔÇö @brief Heal Latin-1-as-UTF-8 mojibake (e.g. 'PreuÃŸen' -> 'Preußen') across all feature property dictionaries.
+* **`loadApiCaches`** ÔÇö @brief Load persisted Wikipedia, Photon, and Nominatim JSON caches if present in cache_dir.
+* **`normaliseAsciiSlug`** ÔÇö @brief Transliterate accented/Germanic characters and normalise a string into an ASCII snake_case slug.
+* **`parseDbfBytes`** ÔÇö @brief Parse an ESRI dBASE III/IV (.dbf) binary table into a list of property dictionaries.
+* **`parseShapefileZip`** ÔÇö @brief Parse a zipped WGS84 ESRI Polygon Shapefile (.shp + .dbf) into a GeoJSON FeatureCollection.
+* **`readGeoJsonDisk`** ÔÇö @brief Fast-load a JSON/GeoJSON file from disk using orjson with stdlib json fallback.
+* **`ringsToGeoJsonMultiPolygon`** ÔÇö @brief Classify ESRI Shapefile clockwise exterior rings and counter-clockwise interior hole rings into GeoJSON geometry.
+* **`saveJsonCache`** ÔÇö @brief Persist an API cache dictionary to disk using orjson.
+* **`writeGeoJsonDisk`** ÔÇö @brief Serialise a parsed FeatureCollection dictionary to disk cache.
 
 ## `GpuOcrEngine.py`
 
@@ -96,6 +194,18 @@
 * **`isIndicatorPhrase`** ÔÇö @brief Check whether a column header or row phrase consists solely of economic sector, commodity or demographic words.
 * **`isMacroRegion`** ÔÇö @brief Check whether a header segment is a continent/macro-region label (e.g. 'NORTH AMERICA', 'EUROPE').
 * **`toSnakeSlug`** ÔÇö @brief Transliterate Latin diacritics to ASCII and convert any phrase into clean lowercase snake_case.
+
+## `ProvinceMapSynthesizer.py`
+
+@brief Synthesises the collision-free 4320x2160 RGB provinces.png raster and exports the 3 flat JSON mask maps.
+
+* **`ProvinceMapSynthesizer`** ÔÇö @brief Partitions overlapping historical/modern masks into atomic RGB provinces and exports flat JSON deliverables.
+* **`A_synthesiseProvincesPng`** ÔÇö @brief Step A: Partition all modern/historical country and admin-division masks into atomic RGB provinces on provinces.png.
+* **`B_registerAdminGroupMasks`** ÔÇö @brief Step B: Aggregate constituent province [R, G, B] colourcodes for all non-spillover A3 parent groups.
+* **`C_exportFlatJsonMaps`** ÔÇö @brief Step C: Clean obsolete outputs and write country_masks.json, subadmin_masks.json and city_masks.json.
+* **`generateDistinctRgbPalette`** ÔÇö @brief Generate deterministic, collision-free, high-visibility non-zero RGB colours ([R, G, B] != [0, 0, 0]).
+* **`partitionEquivalenceClasses`** ÔÇö @brief Partition pixels across potentially overlapping entities into exact atomic equivalence classes with certified 0 collisions.
+* **`writeCompactFlatJson`** ÔÇö @brief Serialise a flat key -> value JSON dictionary atomically with one 2-space indented entry per line.
 
 ## `SectionAssembler.py`
 
@@ -181,6 +291,13 @@
 
 @brief Package initialiser with lazy attribute loading so CPU worker processes avoid importing PyTorch.
 
+
+## `areal_mask_runner.py`
+
+@brief Command-line runner for generating and verifying 4320x2160 WGS84 Equirectangular areal masks for IHS.
+
+* **`buildArgumentParser`** ÔÇö @brief Construct CLI argument parser for the BR Mitchell areal mask pipeline.
+* **`runArealMaskCli`** ÔÇö @brief Parse CLI arguments, execute ArealMaskPipeline, and exit non-zero if any location is unaccounted.
 
 ## `cli_runner.py`
 

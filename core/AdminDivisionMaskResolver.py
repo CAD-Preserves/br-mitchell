@@ -57,6 +57,8 @@ class AdminDivisionMaskResolver:
         g_cfg = self.groups_cfg.get(f"{local_vol}:{local_gk}", {})
         prefix = str(g_cfg.get("prefix") or local_gk)
         default_layer = str(g_cfg.get("default_layer") or "")
+        if default_layer == "city_delegate":
+          city_keys_set.add(local_gk)
         stems_map = self.extractGroupStems(local_gval)
         for local_stem in stems_map.keys():
           div_rule = self.divisions_cfg.get(f"{prefix}:{local_stem}", {})
@@ -69,16 +71,14 @@ class AdminDivisionMaskResolver:
     return sorted(city_keys_set)
 
 
-  def B_resolveAllAdminDivisions (self, arg1_a3_sections_map, arg2_resolved_cities_obj):
+  def B_resolveAllAdminDivisions (self, arg1_a3_sections_map):
     """
     @brief Step B: Resolve and rasterise every administrative division stem and parent A3 group across all three volumes.
     @param arg1_a3_sections_map Dictionary mapping volume_id -> A3 section dictionary.
-    @param arg2_resolved_cities_obj Dictionary mapping city_id -> resolved city entity from CityMaskResolver.
     @return Dictionary containing 'divisions' and 'groups' resolved entity maps.
     """
     #Convert from parameters
     a3_sections_map = arg1_a3_sections_map if isinstance(arg1_a3_sections_map, dict) else {}
-    resolved_cities_obj = arg2_resolved_cities_obj if isinstance(arg2_resolved_cities_obj, dict) else {}
 
     #Declare local instance variables
     vol_ids = sorted(a3_sections_map.keys())
@@ -100,6 +100,7 @@ class AdminDivisionMaskResolver:
         })
         stems_map = self.extractGroupStems(local_gval)
         stem_keys = sorted(stems_map.keys())
+        group_delegated_cities = {}
         group_member_indices = []
         group_stem_entities = {}
 
@@ -108,12 +109,7 @@ class AdminDivisionMaskResolver:
           years_span = stems_map[local_stem]["years"]
           delegate_key = f"{local_vol}:{local_gk}:{local_stem}"
           if delegate_key in self.delegated_cities_map:
-            c_id = self.delegated_cities_map[delegate_key]
-            c_rec = resolved_cities_obj.get(c_id)
-            if c_rec is not None:
-              group_stem_entities[local_stem] = c_rec["entity_id"]
-              if c_rec["flat_indices"].size > 0:
-                group_member_indices.append(c_rec["flat_indices"])
+            group_delegated_cities[local_stem] = self.delegated_cities_map[delegate_key]
             continue
 
           div_rec = self.resolveSingleDivision(local_vol, local_gk, g_cfg, local_stem, years_span)
@@ -130,9 +126,11 @@ class AdminDivisionMaskResolver:
         group_entity_id = f"admin_group:{local_vol}:{local_gk}"
         self.resolved_groups_obj[f"{local_vol}:{local_gk}"] = {
           "category": "admin_group",
+          "delegated_city_stems": group_delegated_cities,
           "entity_id": group_entity_id,
           "era_type": str(g_cfg.get("era_type", "modern")),
           "flat_indices": group_flat,
+          "is_city_spillover_group": (str(g_cfg.get("default_layer") or "") == "city_delegate"),
           "metrics": self.rasteriser.computeMaskMetrics(group_flat),
           "name": f"{local_vol} A3 group: {local_gk}",
           "raw_keys_to_stem": {rk: st for st, info in stems_map.items() for rk in info["raw_keys"]},

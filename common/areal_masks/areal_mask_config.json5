@@ -19,19 +19,12 @@
     "output_dir": "output/areal_masks"
   },
 
-  // -- Output PNG rasters and JSON mask registries --
+  // -- Output PNG raster and flat JSON mask maps (3 .json files total) --
   "outputs": {
-    "admin_divisions_historical_png": "admin_divisions_historical.png",
-    "admin_divisions_modern_png": "admin_divisions_modern.png",
-    "cities_png": "cities.png",
-    "countries_historical_1914_png": "countries_historical_1914.png",
-    "countries_historical_1960_png": "countries_historical_1960.png",
-    "countries_modern_png": "countries_modern.png",
-    "entities_registry_json": "entities_registry.json",
-    "location_index_json": "location_index.json",
-    "provinces_catalog_json": "provinces_catalog.json",
+    "city_masks_json": "city_masks.json",
+    "country_masks_json": "country_masks.json",
     "provinces_png": "provinces.png",
-    "summary_json": "summary.json"
+    "subadmin_masks_json": "subadmin_masks.json"
   },
 
   // -- Online geospatial vector and geocoding endpoints --
@@ -114,10 +107,6 @@
       "ne_subunits": {
         "format": "geojson",
         "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_map_subunits.geojson"
-      },
-      "ne_urban": {
-        "format": "geojson",
-        "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_urban_areas.geojson"
       },
       "russia_1897": {
         "format": "geojson",

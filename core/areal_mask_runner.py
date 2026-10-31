@@ -50,8 +50,8 @@ def runArealMaskCli (arg1_argv_array=None):
   pipeline = ArealMaskPipeline(_REPO_ROOT, {"locale": args.locale})
   summary_obj = pipeline.E_runFullPipeline()
 
-  if summary_obj.get("counts", {}).get("unaccounted_count", 0) > 0:
-    sys.stderr.write(f"Console error: {summary_obj['counts']['unaccounted_count']} locations unaccounted!\n")
+  if len(summary_obj.get("unaccounted_locations", [])) > 0:
+    sys.stderr.write(f"Console error: {len(summary_obj['unaccounted_locations'])} locations unaccounted!\n")
     sys.exit(1)
 
   #Return statement

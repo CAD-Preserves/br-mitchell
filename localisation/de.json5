@@ -17,9 +17,9 @@
   // -- Statusmeldungen der Flächenmasken-Synthese (DE, GMT+0) --
   "masks_initialised": "WGS84-Rektangular-Flächenmasken-Pipeline initialisiert (£1£x£2£, £3£).",
   "masks_countries_resolved": "£1£ kanonische moderne und historische Staaten aufgelöst.",
-  "masks_cities_resolved": "£1£ Städte über GeoHack, Photon OSM und Natural Earth geokodiert und gerastert.",
+  "masks_cities_resolved": "£1£ Städte über GeoHack und Photon OSM in [lng, lat]-Koordinaten geokodiert.",
   "masks_divisions_resolved": "£1£ Verwaltungsgliederungen über £2£ Untertabellengruppen aufgelöst.",
-  "masks_synthesised": "£1£ atomare Provinz-RGB-Masken und £2£ Stadtzonen-RGB-Masken synthetisiert.",
+  "masks_synthesised": "£1£ atomare Provinz-RGB-Masken auf provinces.png synthetisiert.",
   "masks_verified_done": "£1£/£2£ Korpus-Orte (£3£ fehlend) in £4£ Abschnittsdateien in £5£ s verifiziert."
 }
 

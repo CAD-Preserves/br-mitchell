@@ -17,9 +17,9 @@
   // -- Messages de synthèse des masques surfaciques (FR, GMT+0) --
   "masks_initialised": "Pipeline de masques surfaciques WGS84 équirectangulaires initialisé (£1£x£2£, £3£).",
   "masks_countries_resolved": "£1£ pays canoniques modernes et historiques résolus.",
-  "masks_cities_resolved": "£1£ villes géocodées et tramées via GeoHack, Photon OSM et Natural Earth.",
+  "masks_cities_resolved": "£1£ villes géocodées en coordonnées [lng, lat] via GeoHack et Photon OSM.",
   "masks_divisions_resolved": "£1£ divisions administratives résolues à travers £2£ groupes de sous-tableaux.",
-  "masks_synthesised": "£1£ masques RVB provinciaux atomiques et £2£ masques RVB urbains synthétisés.",
+  "masks_synthesised": "£1£ masques RVB provinciaux atomiques synthétisés sur provinces.png.",
   "masks_verified_done": "£1£/£2£ lieux du corpus vérifiés (£3£ manquants) dans £4£ fichiers de section en £5£ s."
 }
 

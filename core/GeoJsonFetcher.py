@@ -182,7 +182,7 @@ class GeoJsonFetcher:
     titles_array = arg1_titles_array if isinstance(arg1_titles_array, list) else []
 
     #Declare local instance variables
-    batch_size = 50
+    batch_size = 35
     dirty_cache = False
     missing_titles = []
     results_obj = {}
@@ -197,6 +197,8 @@ class GeoJsonFetcher:
           missing_titles.append(local_t)
 
     for i in range(0, len(missing_titles), batch_size):
+      if i > 0:
+        time.sleep(0.2)
       local_chunk = missing_titles[i:i + batch_size]
       try:
         resp = self.session.get(
@@ -204,6 +206,7 @@ class GeoJsonFetcher:
           params={
             "action": "query",
             "colimit": "max",
+            "coprimary": "primary",
             "coprop": "type|dim|globe",
             "format": "json",
             "prop": "coordinates",
@@ -381,10 +384,11 @@ class GeoJsonFetcher:
           bb = items[0].get("boundingbox")
           if isinstance(bb, list) and len(bb) == 4:
             s_lat, n_lat, w_lon, e_lon = float(bb[0]), float(bb[1]), float(bb[2]), float(bb[3])
-            best_geom = {
-              "coordinates": [[[w_lon, s_lat], [e_lon, s_lat], [e_lon, n_lat], [w_lon, n_lat], [w_lon, s_lat]]],
-              "type": "Polygon"
-            }
+            if (n_lat - s_lat) >= 0.05 and (e_lon - w_lon) >= 0.05:
+              best_geom = {
+                "coordinates": [[[w_lon, s_lat], [e_lon, s_lat], [e_lon, n_lat], [w_lon, n_lat], [w_lon, s_lat]]],
+                "type": "Polygon"
+              }
     except Exception as local_err:
       sys.stderr.write(f"Console error: Nominatim polygon lookup failed for '{query_str}': {local_err}\n")
 
@@ -393,6 +397,64 @@ class GeoJsonFetcher:
 
     #Return statement
     return best_geom
+
+
+  def F_fetchNominatimCityPoint (self, arg1_query_str):
+    """
+    @brief Step F: Fetch exact city-centre (lon, lat) and bounding box from Nominatim OpenStreetMap search.
+    @param arg1_query_str City search query string (e.g. 'Allentown, Pennsylvania, United States').
+    @return Dictionary with lon, lat, extent, osm_id, osm_type, or None.
+    """
+    #Convert from parameters
+    query_str = str(arg1_query_str or "").strip()
+
+    #Declare local instance variables
+    cache_key = f"city_pt::{query_str}"
+    elapsed = 0.0
+    items = []
+    pt_hit = None
+
+    if not query_str:
+      return None
+
+    if cache_key in self.nominatim_cache_obj:
+      return self.nominatim_cache_obj[cache_key]
+
+    elapsed = time.time() - self.last_nominatim_ts
+    if elapsed < 1.05:
+      time.sleep(1.05 - elapsed)
+
+    try:
+      resp = self.session.get(
+        self.nominatim_url,
+        params={"format": "json", "limit": 3, "q": query_str},
+        timeout=25
+      )
+      self.last_nominatim_ts = time.time()
+      if resp.status_code == 200:
+        items = resp.json()
+        if items:
+          it0 = items[0]
+          ext = None
+          bb = it0.get("boundingbox")
+          if isinstance(bb, list) and len(bb) == 4:
+            s_lat, n_lat, w_lon, e_lon = float(bb[0]), float(bb[1]), float(bb[2]), float(bb[3])
+            ext = [w_lon, n_lat, e_lon, s_lat]
+          pt_hit = {
+            "extent": ext,
+            "lat": float(it0["lat"]),
+            "lon": float(it0["lon"]),
+            "osm_id": it0.get("osm_id"),
+            "osm_type": str(it0.get("osm_type") or "")
+          }
+    except Exception as local_err:
+      sys.stderr.write(f"Console error: Nominatim city point lookup failed for '{query_str}': {local_err}\n")
+
+    self.nominatim_cache_obj[cache_key] = pt_hit
+    self.saveJsonCache(self.nominatim_cache_path, self.nominatim_cache_obj)
+
+    #Return statement
+    return pt_hit
 
 
   def downloadUrlToFile (self, arg1_url, arg2_dest_path, arg3_options=None):
