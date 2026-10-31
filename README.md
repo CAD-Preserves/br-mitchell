@@ -37,6 +37,11 @@ python core/cli_runner.py --volume africa_asia_oceania --start-page 30 --end-pag
 python core/cli_runner.py --pdf path/to/custom_tables.pdf --volume custom_id
 ```
 
+### Generate 4320x2160 WGS84 Areal Masks
+```powershell
+python core/areal_mask_runner.py
+```
+
 ### Verify Environment & Build Documentation
 ```powershell
 .\autobuild.bat
