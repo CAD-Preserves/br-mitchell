@@ -540,3 +540,4 @@ class CountryMaskResolver:
 
     #Return statement
     return sorted(found_ids)
+

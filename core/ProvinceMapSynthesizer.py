@@ -533,3 +533,4 @@ class ProvinceMapSynthesizer:
       os.replace(tmp_path, path)
     except Exception as local_err:
       sys.stderr.write(f"Console error: failed writing JSON {path}: {local_err}\n")
+

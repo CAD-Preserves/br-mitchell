@@ -12,10 +12,12 @@ JSON outputs are in `/outputs/`. To digitise from your own PDFs, see `/common/di
 
 ## Directory Structure
 
+- `common/areal_masks/` — JSON5 geospatial configurations and country, administrative-division and city mask rules (`areal_mask_config.json5`, `country_rules.json5`, `admin_division_rules.json5`, `city_rules.json5`).
 - `common/digitiser/` — JSON5 pipeline and volume configurations (`pipeline_config.json5`, `volumes_config.json5`).
 - `core/` — Modular Python CV + CUDA EasyOCR pipeline (`PagePreprocessor`, `GraphicalElementDetector`, `TokenSegmenter`, `GpuOcrEngine`, `BraceAndCellResolver`, `HeaderHierarchyResolver`, `TableStructureReconstructor`, `PlaceKeyNormaliser`, `TableSeriesFlattener`, `SectionAssembler`, `TableDigitiserPipeline` and `cli_runner.py`).
 - `docs/` — Doxygen configuration (`Doxyfile`), pipeline architecture, JSON schema (`architecture_and_schema.md`) and generated API reference (`api_reference.md`).
 - `localisation/` — CLI localisation strings in EN-GB, FR and DE (`en_gb.json5`, `fr.json5`, `de.json5`).
+- `output/areal_masks/` — `4320x2160` WGS84 Equirectangular lossless RGB `.png` areal masks (`provinces.png`, `cities.png` and visual-inspection category maps) plus RGB-indexed JSON registries covering 100% of corpus locations.
 - `output/json/` — Digitised per-section JSON files namespaced by volume (`africa_asia_oceania/`, `americas/`, `europe/`) plus `manifest.json`.
 
 ## Usage

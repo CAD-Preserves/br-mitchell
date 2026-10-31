@@ -60,3 +60,4 @@ def runArealMaskCli (arg1_argv_array=None):
 
 if __name__ == "__main__":
   runArealMaskCli()
+
