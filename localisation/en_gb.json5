@@ -12,6 +12,14 @@
   "section_exported": "Exported section £1£ (£2£ sub-tables, £3£ cells) -> £4£",
   "error_invalid_input": "Invalid input provided to £1£: £2£",
   "error_missing_file": "Required file was not found at path: £1£",
-  "summary_all_done": "All £1£ volumes digitised (£2£ sections total) in £3£ s."
+  "summary_all_done": "All £1£ volumes digitised (£2£ sections total) in £3£ s.",
+
+  // -- Areal mask synthesis messages (EN-GB, GMT+0) --
+  "masks_initialised": "Initialised WGS84 Equirectangular areal mask pipeline (£1£x£2£, £3£).",
+  "masks_countries_resolved": "Resolved £1£ canonical modern and historical countries.",
+  "masks_cities_resolved": "Geocoded and rasterised £1£ cities via GeoHack, Photon OSM and Natural Earth.",
+  "masks_divisions_resolved": "Resolved £1£ administrative divisions across £2£ sub-table groups.",
+  "masks_synthesised": "Synthesised £1£ atomic province RGB masks and £2£ city zone RGB masks.",
+  "masks_verified_done": "Verified £1£/£2£ corpus locations (£3£ unaccounted) across £4£ section files in £5£ s."
 }
 
