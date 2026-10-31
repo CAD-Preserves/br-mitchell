@@ -110,9 +110,9 @@
 * **`GeoJsonFetcher`** ÔÇö @brief Downloads, caches, and parses online vector boundary layers and city geocoding APIs.
 * **`A_fetchBaseLayer`** ÔÇö @brief Step A: Fetch and parse a configured base geospatial layer (GeoJSON or zipped WGS84 ESRI Shapefile).
 * **`B_fetchGadmLayer`** ÔÇö @brief Step B: Fetch UC Davis GADM 4.1 GeoJSON (plain .json or .json.zip) for an ISO3 country and admin level.
-* **`C_fetchWikipediaCoordinatesBatch`** ÔÇö @brief Step C: Batch-query Wikipedia GeoData API (GeoHack source) for article coordinates (up to 50 titles/call).
+* **`C_fetchWikipediaCoordinatesBatch`** ÔÇö @brief Step C: Batch-query Wikipedia GeoData API (GeoHack source) for article coordinates with HTTP 429 backoff.
 * **`D_fetchPhotonCity`** ÔÇö @brief Step D: Query Photon (photon.komoot.io/api/) for OpenStreetMap city coordinates and extent bounding box.
-* **`E_fetchNominatimPolygon`** ÔÇö @brief Step E: Fetch a GeoJSON polygon from Nominatim OpenStreetMap search with polite 1,1 s rate limiting and disk caching.
+* **`E_fetchNominatimPolygon`** ÔÇö @brief Step E: Fetch a GeoJSON polygon from Nominatim OpenStreetMap search with polite 1,1 s rate limiting, retry and disk caching.
 * **`F_fetchNominatimCityPoint`** ÔÇö @brief Step F: Fetch exact city-centre (lon, lat) and bounding box from Nominatim OpenStreetMap search.
 * **`downloadUrlToFile`** ÔÇö @brief Download an HTTP URL to disk atomically with retry support.
 * **`healFeatureCollectionStrings`** ÔÇö @brief Heal Latin-1-as-UTF-8 mojibake (e.g. 'PreuÃŸen' -> 'Preußen') across all feature property dictionaries.

@@ -578,7 +578,7 @@
     "yug:belfast": {"city_key": "belfast", "layer": "city_delegate"},
     "yug:belgrade": {"city_key": "belgrade", "layer": "city_delegate"},
     "yug:berlin": {"city_key": "berlin", "layer": "city_delegate"},
-    "yug:birmingham": {"city_key": "birmingham_uk", "layer": "city_delegate"},
+    "yug:birmingham": {"city_key": "birmingham", "layer": "city_delegate"},
     "yug:bologna": {"city_key": "bologna", "layer": "city_delegate"},
     "yug:bordeaux": {"city_key": "bordeaux", "layer": "city_delegate"},
     "yug:bosnia_and_hercegovina": {"country_ref": "bosnia_and_herzegovina", "layer": "country_ref"},

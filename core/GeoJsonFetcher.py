@@ -174,7 +174,7 @@ class GeoJsonFetcher:
 
   def C_fetchWikipediaCoordinatesBatch (self, arg1_titles_array):
     """
-    @brief Step C: Batch-query Wikipedia GeoData API (GeoHack source) for article coordinates (up to 50 titles/call).
+    @brief Step C: Batch-query Wikipedia GeoData API (GeoHack source) for article coordinates with HTTP 429 backoff.
     @param arg1_titles_array List of English Wikipedia article titles.
     @return Dictionary mapping requested title -> {'lon': float, 'lat': float, 'resolved_title': str}.
     """
@@ -182,7 +182,7 @@ class GeoJsonFetcher:
     titles_array = arg1_titles_array if isinstance(arg1_titles_array, list) else []
 
     #Declare local instance variables
-    batch_size = 35
+    batch_size = 45
     dirty_cache = False
     missing_titles = []
     results_obj = {}
@@ -198,59 +198,82 @@ class GeoJsonFetcher:
 
     for i in range(0, len(missing_titles), batch_size):
       if i > 0:
-        time.sleep(0.2)
+        time.sleep(0.6)
       local_chunk = missing_titles[i:i + batch_size]
-      try:
-        resp = self.session.get(
-          self.wiki_url,
-          params={
-            "action": "query",
-            "colimit": "max",
-            "coprimary": "primary",
-            "coprop": "type|dim|globe",
-            "format": "json",
-            "prop": "coordinates",
-            "redirects": 1,
-            "titles": "|".join(local_chunk)
-          },
-          timeout=30
-        )
-        if resp.status_code == 200:
-          payload = resp.json()
-          query_obj = payload.get("query", {})
-          norm_map = {}
-          redir_map = {}
-          for x in range(len(query_obj.get("normalized", []))):
-            local_n = query_obj["normalized"][x]
-            norm_map[local_n.get("from", "")] = local_n.get("to", "")
-          for x in range(len(query_obj.get("redirects", []))):
-            local_r = query_obj["redirects"][x]
-            redir_map[local_r.get("from", "")] = local_r.get("to", "")
-          pages_by_title = {}
-          for _, local_page in query_obj.get("pages", {}).items():
-            if isinstance(local_page, dict) and "title" in local_page:
-              pages_by_title[local_page["title"]] = local_page
+      for z in range(4):
+        try:
+          resp = self.session.get(
+            self.wiki_url,
+            params={
+              "action": "query",
+              "colimit": "max",
+              "coprimary": "all",
+              "coprop": "type|dim|globe|country",
+              "format": "json",
+              "prop": "coordinates",
+              "redirects": 1,
+              "titles": "|".join(local_chunk)
+            },
+            timeout=30
+          )
+          if resp.status_code == 200:
+            payload = resp.json()
+            query_obj = payload.get("query", {})
+            norm_map = {}
+            redir_map = {}
+            for x in range(len(query_obj.get("normalized", []))):
+              local_n = query_obj["normalized"][x]
+              norm_map[local_n.get("from", "")] = local_n.get("to", "")
+            for x in range(len(query_obj.get("redirects", []))):
+              local_r = query_obj["redirects"][x]
+              redir_map[local_r.get("from", "")] = local_r.get("to", "")
+            pages_by_title = {}
+            for _, local_page in query_obj.get("pages", {}).items():
+              if isinstance(local_page, dict) and "title" in local_page:
+                pages_by_title[local_page["title"]] = local_page
 
-          for x in range(len(local_chunk)):
-            orig_t = local_chunk[x]
-            curr_t = norm_map.get(orig_t, orig_t)
-            curr_t = redir_map.get(curr_t, curr_t)
-            page_obj = pages_by_title.get(curr_t)
-            coord_entry = None
-            if page_obj and "coordinates" in page_obj and len(page_obj["coordinates"]) > 0:
-              c0 = page_obj["coordinates"][0]
-              if c0.get("globe", "earth") == "earth":
-                coord_entry = {
-                  "lat": float(c0["lat"]),
-                  "lon": float(c0["lon"]),
-                  "resolved_title": curr_t
-                }
-            self.wiki_cache_obj[orig_t] = coord_entry
-            dirty_cache = True
-            if coord_entry is not None:
-              results_obj[orig_t] = coord_entry
-      except Exception as local_err:
-        sys.stderr.write(f"Console error: Wikipedia GeoHack batch request failed: {local_err}\n")
+            for x in range(len(local_chunk)):
+              orig_t = local_chunk[x]
+              curr_t = norm_map.get(orig_t, orig_t)
+              curr_t = redir_map.get(curr_t, curr_t)
+              page_obj = pages_by_title.get(curr_t)
+              coord_entry = None
+              if page_obj and "coordinates" in page_obj and len(page_obj["coordinates"]) > 0:
+                coords_arr = page_obj["coordinates"]
+                chosen_c = None
+                for y in range(len(coords_arr)):
+                  if coords_arr[y].get("globe", "earth") == "earth" and "primary" in coords_arr[y]:
+                    chosen_c = coords_arr[y]
+                    break
+                if chosen_c is None:
+                  for y in range(len(coords_arr)):
+                    if coords_arr[y].get("globe", "earth") == "earth":
+                      chosen_c = coords_arr[y]
+                      break
+                if chosen_c is not None:
+                  coord_entry = {
+                    "lat": float(chosen_c["lat"]),
+                    "lon": float(chosen_c["lon"]),
+                    "resolved_title": curr_t
+                  }
+              self.wiki_cache_obj[orig_t] = coord_entry
+              dirty_cache = True
+              if coord_entry is not None:
+                results_obj[orig_t] = coord_entry
+            break
+          elif resp.status_code == 429 or resp.status_code >= 500:
+            retry_hdr = resp.headers.get("Retry-After")
+            wait_sec = 2.0*(z + 1)
+            if retry_hdr and str(retry_hdr).isdigit():
+              wait_sec = max(wait_sec, float(retry_hdr))
+            time.sleep(wait_sec)
+          else:
+            sys.stderr.write(f"Console error: Wikipedia GeoHack HTTP {resp.status_code}\n")
+            break
+        except Exception as local_err:
+          if z == 3:
+            sys.stderr.write(f"Console error: Wikipedia GeoHack batch request failed: {local_err}\n")
+          time.sleep(1.5*(z + 1))
 
     if dirty_cache:
       self.saveJsonCache(self.wiki_cache_path, self.wiki_cache_obj)
@@ -303,11 +326,18 @@ class GeoJsonFetcher:
           local_osm_val = str(local_props.get("osm_value", "")).lower()
           if expected_iso2 and local_cc and local_cc != expected_iso2:
             continue
-          if local_osm_val in ("city", "town", "municipality", "administrative", "borough", "suburb", "village", "county", "state"):
+          if local_osm_val in ("city", "town", "municipality", "borough", "suburb", "village", "quarter", "district"):
             best_feat = local_f
             break
-          if best_feat is None:
+        if best_feat is None:
+          for i in range(len(feats)):
+            local_f = feats[i]
+            local_props = local_f.get("properties", {})
+            local_cc = str(local_props.get("countrycode", "")).upper()
+            if expected_iso2 and local_cc and local_cc != expected_iso2:
+              continue
             best_feat = local_f
+            break
 
         if best_feat is None and feats and not expected_iso2:
           best_feat = feats[0]
@@ -338,7 +368,7 @@ class GeoJsonFetcher:
 
   def E_fetchNominatimPolygon (self, arg1_query_str):
     """
-    @brief Step E: Fetch a GeoJSON polygon from Nominatim OpenStreetMap search with polite 1,1 s rate limiting and disk caching.
+    @brief Step E: Fetch a GeoJSON polygon from Nominatim OpenStreetMap search with polite 1,1 s rate limiting, retry and disk caching.
     @param arg1_query_str Geographic place query string (e.g. 'Bohemia, Czechia', 'Huntingdonshire, England').
     @return GeoJSON geometry dictionary (Polygon/MultiPolygon) or None.
     """
@@ -348,52 +378,60 @@ class GeoJsonFetcher:
     #Declare local instance variables
     best_geom = None
     elapsed = 0.0
+    http_ok = False
     items = []
 
     if not query_str:
       return None
 
-    if query_str in self.nominatim_cache_obj:
+    if query_str in self.nominatim_cache_obj and self.nominatim_cache_obj[query_str] is not None:
       return self.nominatim_cache_obj[query_str]
 
-    elapsed = time.time() - self.last_nominatim_ts
-    if elapsed < 1.05:
-      time.sleep(1.05 - elapsed)
+    for z in range(3):
+      elapsed = time.time() - self.last_nominatim_ts
+      if elapsed < 1.1:
+        time.sleep(1.1 - elapsed)
+      try:
+        resp = self.session.get(
+          self.nominatim_url,
+          params={
+            "format": "json",
+            "limit": 5,
+            "polygon_geojson": 1,
+            "polygon_threshold": 0.002,
+            "q": query_str
+          },
+          timeout=35
+        )
+        self.last_nominatim_ts = time.time()
+        if resp.status_code == 200:
+          http_ok = True
+          items = resp.json()
+          for i in range(len(items)):
+            local_g = items[i].get("geojson")
+            if isinstance(local_g, dict) and local_g.get("type") in ("Polygon", "MultiPolygon"):
+              best_geom = local_g
+              break
+          if best_geom is None and items:
+            bb = items[0].get("boundingbox")
+            if isinstance(bb, list) and len(bb) == 4:
+              s_lat, n_lat, w_lon, e_lon = float(bb[0]), float(bb[1]), float(bb[2]), float(bb[3])
+              if (n_lat - s_lat) >= 0.05 and (e_lon - w_lon) >= 0.05:
+                best_geom = {
+                  "coordinates": [[[w_lon, s_lat], [e_lon, s_lat], [e_lon, n_lat], [w_lon, n_lat], [w_lon, s_lat]]],
+                  "type": "Polygon"
+                }
+          break
+        else:
+          time.sleep(1.5*(z + 1))
+      except Exception as local_err:
+        if z == 2:
+          sys.stderr.write(f"Console error: Nominatim polygon lookup failed for '{query_str}': {local_err}\n")
+        time.sleep(1.5*(z + 1))
 
-    try:
-      resp = self.session.get(
-        self.nominatim_url,
-        params={
-          "format": "json",
-          "limit": 5,
-          "polygon_geojson": 1,
-          "polygon_threshold": 0.002,
-          "q": query_str
-        },
-        timeout=35
-      )
-      self.last_nominatim_ts = time.time()
-      if resp.status_code == 200:
-        items = resp.json()
-        for i in range(len(items)):
-          local_g = items[i].get("geojson")
-          if isinstance(local_g, dict) and local_g.get("type") in ("Polygon", "MultiPolygon"):
-            best_geom = local_g
-            break
-        if best_geom is None and items:
-          bb = items[0].get("boundingbox")
-          if isinstance(bb, list) and len(bb) == 4:
-            s_lat, n_lat, w_lon, e_lon = float(bb[0]), float(bb[1]), float(bb[2]), float(bb[3])
-            if (n_lat - s_lat) >= 0.05 and (e_lon - w_lon) >= 0.05:
-              best_geom = {
-                "coordinates": [[[w_lon, s_lat], [e_lon, s_lat], [e_lon, n_lat], [w_lon, n_lat], [w_lon, s_lat]]],
-                "type": "Polygon"
-              }
-    except Exception as local_err:
-      sys.stderr.write(f"Console error: Nominatim polygon lookup failed for '{query_str}': {local_err}\n")
-
-    self.nominatim_cache_obj[query_str] = best_geom
-    self.saveJsonCache(self.nominatim_cache_path, self.nominatim_cache_obj)
+    if http_ok:
+      self.nominatim_cache_obj[query_str] = best_geom
+      self.saveJsonCache(self.nominatim_cache_path, self.nominatim_cache_obj)
 
     #Return statement
     return best_geom
@@ -427,25 +465,41 @@ class GeoJsonFetcher:
     try:
       resp = self.session.get(
         self.nominatim_url,
-        params={"format": "json", "limit": 3, "q": query_str},
+        params={"addressdetails": 1, "format": "json", "limit": 8, "q": query_str},
         timeout=25
       )
       self.last_nominatim_ts = time.time()
       if resp.status_code == 200:
         items = resp.json()
         if items:
-          it0 = items[0]
+          chosen_item = None
+          for i in range(len(items)):
+            local_it = items[i]
+            addr_t = str(local_it.get("addresstype") or "").lower()
+            it_t = str(local_it.get("type") or "").lower()
+            if addr_t in ("city", "town", "municipality", "borough", "village", "suburb") or it_t in ("city", "town", "municipality", "borough", "village", "suburb"):
+              chosen_item = local_it
+              break
+          if chosen_item is None:
+            for i in range(len(items)):
+              local_it = items[i]
+              addr_t = str(local_it.get("addresstype") or "").lower()
+              if addr_t not in ("country", "state", "province", "region", "county", "state_district"):
+                chosen_item = local_it
+                break
+          if chosen_item is None:
+            chosen_item = items[0]
           ext = None
-          bb = it0.get("boundingbox")
+          bb = chosen_item.get("boundingbox")
           if isinstance(bb, list) and len(bb) == 4:
             s_lat, n_lat, w_lon, e_lon = float(bb[0]), float(bb[1]), float(bb[2]), float(bb[3])
             ext = [w_lon, n_lat, e_lon, s_lat]
           pt_hit = {
             "extent": ext,
-            "lat": float(it0["lat"]),
-            "lon": float(it0["lon"]),
-            "osm_id": it0.get("osm_id"),
-            "osm_type": str(it0.get("osm_type") or "")
+            "lat": float(chosen_item["lat"]),
+            "lon": float(chosen_item["lon"]),
+            "osm_id": chosen_item.get("osm_id"),
+            "osm_type": str(chosen_item.get("osm_type") or "")
           }
     except Exception as local_err:
       sys.stderr.write(f"Console error: Nominatim city point lookup failed for '{query_str}': {local_err}\n")

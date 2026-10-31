@@ -95,12 +95,13 @@ class CityMaskResolver:
       wiki_title = str(rule_obj.get("wiki") or display_name)
       query_str = str(rule_obj.get("query") or display_name)
       iso2_code = str(rule_obj.get("iso2") or "").upper()
+      wiki_fallback = str(rule_obj.get("wiki_fallback") or "")
       return {
         "iso2": iso2_code,
         "name": display_name,
         "query": query_str,
         "wiki": wiki_title,
-        "wiki_fallback": query_str.split(",")[0].strip()
+        "wiki_fallback": wiki_fallback
       }
 
     for i in range(len(self.sorted_suffixes)):
@@ -229,11 +230,18 @@ class CityMaskResolver:
           local_val = str(local_p.get("osm_value") or "").lower()
           if expected_iso2 and local_cc and local_cc != expected_iso2:
             continue
-          if local_val in ("city", "town", "municipality", "administrative", "borough", "suburb", "village", "county", "state"):
+          if local_val in ("city", "town", "municipality", "borough", "suburb", "village", "quarter", "district"):
             best_feat = local_f
             break
-          if best_feat is None:
+        if best_feat is None:
+          for i in range(len(feats)):
+            local_f = feats[i]
+            local_p = local_f.get("properties") or {}
+            local_cc = str(local_p.get("countrycode") or "").upper()
+            if expected_iso2 and local_cc and local_cc != expected_iso2:
+              continue
             best_feat = local_f
+            break
         if best_feat is None and feats and not expected_iso2:
           best_feat = feats[0]
         if best_feat is not None:

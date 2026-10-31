@@ -226,14 +226,13 @@ class ArealMaskPipeline:
             union_tuples.add(tuple(vol_rgbs[i]))
         country_masks_map[local_k] = [[t[0], t[1], t[2]] for t in sorted(union_tuples)]
 
-    # 3. Populate canonical city [lng, lat] coordinates
+    # 3. Populate canonical city [lng, lat] coordinates (clean city keys only; never A3 spillover headers)
     for local_cid, lng_lat in sorted(cities_map.items()):
       city_masks_map[local_cid] = lng_lat
 
-    # 4. Populate subadmin_masks_map (<parent>, <parent>.<division>, <parent>.<raw_key>) and spilled A3 city aliases
+    # 4. Populate subadmin_masks_map (<parent>, <parent>.<division>, <parent>.<raw_key>)
     for local_vgk, g_rec in sorted(groups_map.items()):
       local_gk = local_vgk.split(":", 1)[1]
-      delegated_stems = g_rec.get("delegated_city_stems", {})
       stem_entities = g_rec.get("stem_to_entity_id", {})
       raw_to_stem = g_rec.get("raw_keys_to_stem", {})
 
@@ -247,20 +246,12 @@ class ArealMaskPipeline:
         if c_rgbs:
           subadmin_masks_map[f"{local_gk}.{local_stem}"] = c_rgbs
 
-      for local_stem, target_city_id in sorted(delegated_stems.items()):
-        if target_city_id in cities_map:
-          city_masks_map[f"{local_gk}.{local_stem}"] = cities_map[target_city_id]
-
       for local_rk, local_stem in sorted(raw_to_stem.items()):
         if local_stem in stem_entities:
           child_eid = stem_entities[local_stem]
           c_rgbs = self.synthesizer.entity_rgb_lookup.get(child_eid, [])
           if c_rgbs:
             subadmin_masks_map[f"{local_gk}.{local_rk}"] = c_rgbs
-        elif local_stem in delegated_stems:
-          target_city_id = delegated_stems[local_stem]
-          if target_city_id in cities_map:
-            city_masks_map[f"{local_gk}.{local_rk}"] = cities_map[target_city_id]
 
     #Return statement
     return (country_masks_map, subadmin_masks_map, city_masks_map)
@@ -394,14 +385,19 @@ class ArealMaskPipeline:
                   continue
                 a3_series_total = a3_series_total + 1
                 comp_key = f"{local_k}.{local_rk}"
+                clean_stem, _ = self.admin_resolver.cleanDivisionStem(local_rk)
                 if comp_key in subadmin_disk:
                   s_rgbs = subadmin_disk[comp_key]
                   if s_rgbs and all(((c[0] << 16) | (c[1] << 8) | c[2]) in png_codes_set for c in s_rgbs):
                     a3_series_accounted = a3_series_accounted + 1
                   else:
                     unaccounted_list.append(f"{local_vol}:A3:{comp_key}")
-                elif comp_key in city_disk and len(city_disk[comp_key]) == 2:
-                  a3_series_accounted = a3_series_accounted + 1
+                elif clean_stem in city_disk and len(city_disk[clean_stem]) == 2:
+                  s_pt = city_disk[clean_stem]
+                  if not (abs(s_pt[0]) < 0.01 and abs(s_pt[1]) < 0.01):
+                    a3_series_accounted = a3_series_accounted + 1
+                  else:
+                    unaccounted_list.append(f"{local_vol}:A3:{comp_key}")
                 else:
                   unaccounted_list.append(f"{local_vol}:A3:{comp_key}")
 
