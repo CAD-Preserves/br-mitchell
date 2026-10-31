@@ -169,6 +169,7 @@ class TableSeriesFlattener:
       col_lookup_obj,
       tbl.get("above_phrases", [])
     )
+    date_cols_map = self.detectInternalDateColumns(cols_array, col_lookup_obj, rows_array)
 
     # Detect untitled continuation sub-tables (e.g. 'M | F | Total' or '1960 | M' continuing previous country across column/page break)
     active_place = subtable_place
@@ -188,9 +189,21 @@ class TableSeriesFlattener:
       is_cont_row = bool(r.get("series_continuation", False))
       row_is_yr = self.isYearOrRange(raw_rlbl)
       cells_array = r.get("cells", [])
+      row_date_overrides = {}
+
+      if date_cols_map:
+        for x in range(len(cells_array)):
+          dc_cell = cells_array[x]
+          dc_idx = dc_cell.get("col_index")
+          if dc_idx in date_cols_map:
+            dc_txt = str(dc_cell.get("raw_text", "")).strip()
+            if self.isYearOrRange(dc_txt):
+              row_date_overrides[date_cols_map[dc_idx]] = self.slugifyYear(dc_txt)
 
       for x in range(len(cells_array)):
         cell = cells_array[x]
+        if cell.get("col_index") in date_cols_map:
+          continue
         if cell.get("value_status") != "numeric":
           continue
         num_val = cell.get("numeric_value")
@@ -212,9 +225,9 @@ class TableSeriesFlattener:
         yr_slug = ""
 
         # Case 1: Rows are years and sub-table/column belongs to a known place (e.g. A1 Guinea Bissau, A6 Sri Lanka side-table)
-        if (row_is_yr or (row_span > 1 and grouped_rows and all(self.isYearOrRange(gr) for gr in grouped_rows))) and effective_place:
+        if (row_is_yr or (row_span > 1 and grouped_rows and all(self.isYearOrRange(gr) for gr in grouped_rows)) or ("*" in row_date_overrides)) and effective_place:
           place_key = effective_place
-          yr_slug = self.formatYearSpanSlug(grouped_rows) if row_span > 1 else self.slugifyYear(raw_rlbl)
+          yr_slug = row_date_overrides.get(place_key) or row_date_overrides.get("*") or (self.formatYearSpanSlug(grouped_rows) if row_span > 1 else self.slugifyYear(raw_rlbl))
           ind_parts = []
           qual_slug = self.extractQualifierIndicatorSlug(cell_qual)
           if qual_slug:
@@ -226,13 +239,13 @@ class TableSeriesFlattener:
           ind_slug = "_".join(ind_parts) if ind_parts else default_ind
 
         # Case 2: Rows are years and columns specify places (+ optional indicators like Wheat/Barley or Imports/Exports)
-        elif row_is_yr or (row_span > 1 and grouped_rows and all(self.isYearOrRange(gr) for gr in grouped_rows)):
+        elif row_is_yr or (row_span > 1 and grouped_rows and all(self.isYearOrRange(gr) for gr in grouped_rows)) or bool(row_date_overrides):
           if not c_info["semantic"]:
             continue
-          yr_slug = self.formatYearSpanSlug(grouped_rows) if row_span > 1 else self.slugifyYear(raw_rlbl)
           raw_col_place = c_info["semantic"][0]
           override_place = self.extractPlaceOverrideFromQualifier(cell_qual, raw_col_place)
           place_key = override_place if override_place else self.slugifyPlace(raw_col_place)
+          yr_slug = row_date_overrides.get(place_key) or row_date_overrides.get("*") or (self.formatYearSpanSlug(grouped_rows) if row_span > 1 else self.slugifyYear(raw_rlbl))
 
           ind_parts = []
           for y in range(1, len(c_info["semantic"])):
@@ -354,12 +367,16 @@ class TableSeriesFlattener:
     path_array = arg1_header_path_array if isinstance(arg1_header_path_array, list) else []
 
     #Declare local instance variables
+    has_date_hdr = False
     semantic_array = []
     years_array = []
 
     for i in range(len(path_array)):
       seg = self.cleanProseSpacing(str(path_array[i]))
-      if not seg or re.match(r"^(?:col_\d+|row_label|Date|circa)$", seg, re.IGNORECASE):
+      if not seg or re.match(r"^(?:col_\d+|row_label|circa)$", seg, re.IGNORECASE):
+        continue
+      if re.match(r"^(?:Date|Year)s?$", seg, re.IGNORECASE):
+        has_date_hdr = True
         continue
       if self.isYearOrRange(seg):
         years_array.append(seg)
@@ -370,6 +387,7 @@ class TableSeriesFlattener:
 
     #Return statement
     return {
+      "has_date_hdr": has_date_hdr,
       "semantic": semantic_array,
       "years": years_array
     }
@@ -391,6 +409,72 @@ class TableSeriesFlattener:
 
     #Return statement
     return txt.strip()
+
+
+  def detectInternalDateColumns (self, arg1_cols_array, arg2_col_lookup_obj, arg3_rows_array):
+    """
+    @brief Detect mid-table Date/Year stub columns in side-by-side multi-country tables (e.g. Sikkim | Portuguese Settlements).
+    @param arg1_cols_array Reconstructed columns list.
+    @param arg2_col_lookup_obj Analysed column header lookup dictionary.
+    @param arg3_rows_array Reconstructed rows list.
+    @return Dictionary mapping date col_index to its target place_key (or '*').
+    """
+    #Convert from parameters
+    cols_array = arg1_cols_array if isinstance(arg1_cols_array, list) else []
+    col_lookup_obj = arg2_col_lookup_obj if isinstance(arg2_col_lookup_obj, dict) else {}
+    rows_array = arg3_rows_array if isinstance(arg3_rows_array, list) else []
+
+    #Declare local instance variables
+    data_cols = [c for c in cols_array if c.get("role") == "data"]
+    date_cols_map = {}
+
+    for i in range(len(data_cols)):
+      c_idx = data_cols[i]["col_index"]
+      c_info = col_lookup_obj.get(c_idx, {})
+      if c_info.get("years"):
+        continue
+      sem = c_info.get("semantic", [])
+      target_place = self.slugifyPlace(sem[0]) if sem else "*"
+      if target_place in self.pure_indicators_set:
+        continue
+
+      if c_info.get("has_date_hdr"):
+        date_cols_map[c_idx] = target_place
+        continue
+
+      # Unlabelled internal Date sub-column preceding sibling columns of the same country (e.g. Date | M | F | Total)
+      has_sibling = False
+      if len(sem) == 1 and i + 1 < len(data_cols):
+        nxt_sem = col_lookup_obj.get(data_cols[i + 1]["col_index"], {}).get("semantic", [])
+        if nxt_sem and self.slugifyPlace(nxt_sem[0]) == target_place:
+          has_sibling = True
+      if not has_sibling:
+        continue
+
+      yr_vals = []
+      all_valid_years = True
+      for x in range(len(rows_array)):
+        for y in range(len(rows_array[x].get("cells", []))):
+          cell = rows_array[x]["cells"][y]
+          if cell.get("col_index") != c_idx:
+            continue
+          raw_t = str(cell.get("raw_text", "")).strip()
+          if not raw_t or cell.get("value_status") in ("missing", "nil", "less_than_half_unit", "spanned_by_brace"):
+            continue
+          if not self.isYearOrRange(raw_t):
+            all_valid_years = False
+            break
+          yr_m = re.match(r"^(\d{4})", re.sub(r"^circa\s+", "", raw_t, flags=re.IGNORECASE).strip())
+          if yr_m:
+            yr_vals.append(int(yr_m.group(1)))
+        if not all_valid_years:
+          break
+
+      if all_valid_years and len(yr_vals) >= 3 and all(yr_vals[z] > yr_vals[z - 1] for z in range(1, len(yr_vals))):
+        date_cols_map[c_idx] = target_place
+
+    #Return statement
+    return date_cols_map
 
 
   def extractPlaceOverrideFromQualifier (self, arg1_qualifier_str, arg2_col_place_str):
