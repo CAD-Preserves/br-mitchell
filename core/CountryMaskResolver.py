@@ -28,6 +28,8 @@ class CountryMaskResolver:
     self.resolved_countries_obj = {}
     self.section_overrides_cfg = country_rules_obj.get("section_key_overrides", {})
     self.sorted_country_keys = sorted(self.countries_cfg.keys(), key=lambda local_k: len(local_k), reverse=True)
+    self.subadmin_entities_set = set(country_rules_obj.get("subadmin_entities", []))
+    self.wrapper_inner_overrides_cfg = country_rules_obj.get("wrapper_inner_overrides", {})
 
 
   def A_resolveAllCountries (self):
@@ -158,6 +160,35 @@ class CountryMaskResolver:
 
     #Return statement
     return candidates_array
+
+
+  def formatEntityMaskRef (self, arg1_entity_id):
+    """
+    @brief Format a canonical country/subadmin entity ID into a 'type:key' reference for table_masks.json.
+    @param arg1_entity_id Canonical entity ID in country_rules.json5.
+    @return String 'subadmin:<entity_id>' or 'country:<entity_id>'.
+    """
+    #Convert from parameters
+    entity_id = str(arg1_entity_id or "").strip()
+
+    #Declare local instance variables
+    prefix_str = "subadmin" if self.isSubadminEntity(entity_id) else "country"
+
+    #Return statement
+    return f"{prefix_str}:{entity_id}"
+
+
+  def isSubadminEntity (self, arg1_entity_id):
+    """
+    @brief Check whether an entity in country_rules.json5 belongs in subadmin_masks.json rather than country_masks.json.
+    @param arg1_entity_id Canonical entity ID.
+    @return Boolean True if entity is a constituent, sub-imperial, or sub-national territory.
+    """
+    #Convert from parameters
+    entity_id = str(arg1_entity_id or "").strip()
+
+    #Return statement
+    return entity_id in self.subadmin_entities_set
 
 
   def matchAdmin0Features (self, arg1_layer_key, arg2_source_obj):
@@ -511,6 +542,56 @@ class CountryMaskResolver:
 
     #Return statement
     return record_obj
+
+
+  def resolveWrapperInnerSeries (self, arg1_volume_id, arg2_section_id, arg3_wrapper_key, arg4_sub_obj):
+    """
+    @brief Resolve every inner series key inside a multi-country wrapper sub-table to its exact canonical entity ID.
+    @param arg1_volume_id Volume identifier.
+    @param arg2_section_id Section identifier.
+    @param arg3_wrapper_key Top-level wrapper sub-table key.
+    @param arg4_sub_obj Inner dictionary of '<country_indicator>_<year>' series.
+    @return Dictionary with 'raw_to_entity' and 'stem_to_entity' maps.
+    """
+    #Convert from parameters
+    volume_id = str(arg1_volume_id or "").strip()
+    section_id = str(arg2_section_id or "").strip()
+    wrapper_key = str(arg3_wrapper_key or "").strip()
+    sub_obj = arg4_sub_obj if isinstance(arg4_sub_obj, dict) else {}
+
+    #Declare local instance variables
+    inner_keys = sorted(sub_obj.keys())
+    raw_to_entity = {}
+    stem_to_entity = {}
+
+    for i in range(len(inner_keys)):
+      local_ik = str(inner_keys[i] or "").strip()
+      if local_ik in ("name", "subtitle") or not local_ik:
+        continue
+      local_stem = re.sub(r"_(?:1[789]\d{2}|20\d{2}).*$", "", local_ik.lower())
+      base_stem = local_stem[:-8] if local_stem.endswith("_revised") and len(local_stem) > 8 else local_stem
+      ov_exact = f"{volume_id}:{section_id}:{wrapper_key}:{local_stem}"
+      ov_base = f"{volume_id}:{section_id}:{wrapper_key}:{base_stem}"
+
+      if ov_exact in self.wrapper_inner_overrides_cfg:
+        resolved_ids = self.normaliseTargetList(self.wrapper_inner_overrides_cfg[ov_exact])
+      elif ov_base in self.wrapper_inner_overrides_cfg:
+        resolved_ids = self.normaliseTargetList(self.wrapper_inner_overrides_cfg[ov_base])
+      else:
+        resolved_ids = self.B_resolveCorpusCountryKey(volume_id, section_id, base_stem)
+
+      if len(resolved_ids) == 1:
+        raw_to_entity[local_ik] = resolved_ids[0]
+        stem_to_entity[local_stem] = resolved_ids[0]
+        stem_to_entity[base_stem] = resolved_ids[0]
+      else:
+        sys.stderr.write(f"Console error: unresolved wrapper inner series {volume_id}:{section_id}:{wrapper_key}.{local_ik}\n")
+
+    #Return statement
+    return {
+      "raw_to_entity": raw_to_entity,
+      "stem_to_entity": stem_to_entity
+    }
 
 
   def scanSubObjectCountries (self, arg1_sub_obj):

@@ -51,14 +51,15 @@ Each section file contains a single root key matching its `<table_key>` (`A1`, `
 
 ## 3. WGS84 Equirectangular Areal Masks (`output/areal_masks/`)
 
-Every geographic location across all 242 section JSON files is accounted for in `output/areal_masks/` via a single lossless `4320 x 2160` WGS84 Equirectangular (`EPSG:4326`, `[-180°, +180°]` longitude × `[+90°, -90°]` latitude, 5-arcminute / `12` pixels per degree) `.png` raster (`provinces.png`) and three flat JSON maps (`country_masks.json`, `subadmin_masks.json`, `city_masks.json`).
+Every geographic location across all 242 section JSON files is accounted for in `output/areal_masks/` via a single lossless `4320 x 2160` WGS84 Equirectangular (`EPSG:4326`, `[-180°, +180°]` longitude × `[+90°, -90°]` latitude, 5-arcminute / `12` pixels per degree) `.png` raster (`provinces.png`) and four flat JSON maps (`country_masks.json`, `subadmin_masks.json`, `city_masks.json`, `table_masks.json`).
 
 ### Pipeline Stages (`ArealMaskPipeline`)
 1. **`GeoJsonFetcher`** (`A_` to `F_`): Fetches online vector boundaries and point coordinates from Natural Earth 10m (`admin_0_countries`, `map_units`, `map_subunits`, `admin_1_states_provinces`), historical world basemaps (`1783–1994`), HGIS 1948 British India provinces and princely agencies, 1914 Imperial German Regierungsbezirke, 1897 Russian Empire governorates, Habsburg Galicia & Kingdom of Hungary, UK ceremonial counties, UC Davis GADM 4.1, Wikipedia GeoHack API, Photon OpenStreetMap API and Nominatim OSM.
-2. **`CountryMaskResolver`** (`A_` to `B_`): Rasterises 305 canonical modern, colonial and dissolved countries (`1750–2025`) and resolves OCR/currency/multi-country corpus keys.
-3. **`CityMaskResolver`** (`A_`): Geocodes all corpus cities to `[lng, lat]` WGS84 coordinates via batch Wikipedia GeoHack + Photon (OSM) + Nominatim fallback.
-4. **`AdminDivisionMaskResolver`** (`A_` to `B_`): Resolves all `A3` administrative-division sub-tables (`1750–2025` states, provinces, crownlands, guberniyas, historic UK counties, DDR Bezirke and princely agencies).
-5. **`ProvinceMapSynthesizer`** (`A_` to `C_`): Partitions overlapping modern/historical country and division masks into collision-free atomic province equivalence classes with unique non-zero `[R, G, B]` colours on `provinces.png` and exports three flat JSON maps:
-   - `country_masks.json`: `<country_key> -> [[R, G, B], ...]` on `provinces.png`.
-   - `subadmin_masks.json`: `<parent>.<division>` and `<parent>.<raw_key> -> [[R, G, B], ...]` on `provinces.png`.
-   - `city_masks.json`: `<city_key> -> [lng, lat]` WGS84 decimal degrees.
+2. **`CountryMaskResolver`** (`A_` to `B_`): Rasterises canonical modern, colonial and dissolved countries plus constituent/sub-imperial territories (`1750–2025`), and resolves corpus keys and multi-country wrapper sub-tables.
+3. **`CityMaskResolver`** (`A_`): Normalises OCR city aliases and geocodes all canonical corpus cities to `[lng, lat]` WGS84 coordinates via batch Wikipedia GeoHack + Photon (OSM) + Nominatim fallback.
+4. **`AdminDivisionMaskResolver`** (`A_` to `B_`): Resolves all `A3` administrative-division sub-tables (`1750–2025` states, provinces, crownlands, guberniyas, historic UK counties, DDR Bezirke and princely agencies) to canonical `<parent>.<division>` keys.
+5. **`ProvinceMapSynthesizer`** (`A_` to `C_`): Partitions overlapping modern/historical country and division masks into collision-free atomic province equivalence classes with unique non-zero `[R, G, B]` colours on `provinces.png` and exports four flat JSON maps:
+   - `country_masks.json`: Purely canonical whole countries (`modern`, colonial and dissolved states) -> `[[R, G, B], ...]` on `provinces.png`.
+   - `subadmin_masks.json`: Purely canonical sub-imperial/constituent territories (`austria_cisleithania`, `hungary_transleithania`, `england_and_wales`, `scotland`, `alaska`, `cape_colony`, etc.) and `<parent>.<division>` keys -> `[[R, G, B], ...]` on `provinces.png`.
+   - `city_masks.json`: Purely canonical cities -> `[lng, lat]` WGS84 decimal degrees.
+   - `table_masks.json`: Flat `"<volume>/<section>:<table_key>"` (and `"<volume>/A3:<group>.<series_key>"` / `"<volume>/<section>:<wrapper>.<inner_key>"`) -> `"<type>:<canonical_key>"` lookup map (e.g. `"europe/A1:austria_cisleithania": "subadmin:austria_cisleithania"`, `"europe/A1:ireland": "country:ireland_whole_island"`, `"africa_asia_oceania/A4:pakistan": "city:hyderabad_pakistan"`).

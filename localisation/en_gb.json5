@@ -20,6 +20,7 @@
   "masks_cities_resolved": "Geocoded £1£ cities to [lng, lat] coordinates via GeoHack and Photon OSM.",
   "masks_divisions_resolved": "Resolved £1£ administrative divisions across £2£ sub-table groups.",
   "masks_synthesised": "Synthesised £1£ atomic province RGB masks on provinces.png.",
+  "masks_table_lookup_exported": "Exported £1£ table-to-mask mappings in table_masks.json.",
   "masks_verified_done": "Verified £1£/£2£ corpus locations (£3£ unaccounted) across £4£ section files in £5£ s."
 }
 

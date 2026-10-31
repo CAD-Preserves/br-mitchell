@@ -61,7 +61,13 @@ class ArealMaskPipeline:
     self.rasteriser = EquirectangularRasteriser(self.config_obj.get("grid", {}))
     self.country_resolver = CountryMaskResolver(self.fetcher, self.rasteriser, self.country_rules_obj)
     self.city_resolver = CityMaskResolver(self.fetcher, self.city_rules_obj)
-    self.admin_resolver = AdminDivisionMaskResolver(self.fetcher, self.rasteriser, self.country_resolver, self.admin_rules_obj)
+    self.admin_resolver = AdminDivisionMaskResolver(
+      self.fetcher,
+      self.rasteriser,
+      self.country_resolver,
+      self.city_resolver,
+      self.admin_rules_obj
+    )
     self.synthesizer = ProvinceMapSynthesizer(self.root_dir, self.config_obj, self.rasteriser)
 
 
@@ -155,7 +161,7 @@ class ArealMaskPipeline:
 
   def C_synthesiseRasters (self, arg1_resolved_bundle):
     """
-    @brief Step C: Synthesise provinces.png (4320x2160 RGB) and register parent A3 group colourcode lists.
+    @brief Step C: Synthesise provinces.png (4320x2160 RGB) and register canonical A3 group colourcode lists.
     @param arg1_resolved_bundle Output dictionary from B_resolveAllEntities.
     @return Dictionary summarising exported provinces.png path and atomic province count.
     """
@@ -166,7 +172,7 @@ class ArealMaskPipeline:
     prov_res = {}
 
     prov_res = self.synthesizer.A_synthesiseProvincesPng(resolved_bundle["countries"], resolved_bundle["divisions"])
-    self.synthesizer.B_registerAdminGroupMasks(resolved_bundle["groups"])
+    self.synthesizer.B_registerAdminGroupMasks(resolved_bundle["divisions"], resolved_bundle["groups"])
 
     print(self.config_loader.formatLocalisedString("masks_synthesised", [prov_res["province_count"]]))
 
@@ -176,90 +182,122 @@ class ArealMaskPipeline:
 
   def D_buildFlatMaskMaps (self, arg1_resolved_bundle):
     """
-    @brief Step D: Construct the 3 flat dictionaries: country_masks_map, subadmin_masks_map and city_masks_map.
+    @brief Step D: Construct canonical country_masks_map, subadmin_masks_map, city_masks_map and flat lookup table_masks_map.
     @param arg1_resolved_bundle Output dictionary from B_resolveAllEntities.
-    @return Tuple (country_masks_map, subadmin_masks_map, city_masks_map).
+    @return Tuple (country_masks_map, subadmin_masks_map, city_masks_map, table_masks_map).
     """
     #Convert from parameters
     resolved_bundle = arg1_resolved_bundle if isinstance(arg1_resolved_bundle, dict) else {}
 
     #Declare local instance variables
+    canonical_div_eids = {}
     cities_map = resolved_bundle.get("cities", {})
     city_masks_map = {}
     countries_map = resolved_bundle.get("countries", {})
-    country_key_per_vol = {}
     country_masks_map = {}
+    divisions_map = resolved_bundle.get("divisions", {})
     groups_map = resolved_bundle.get("groups", {})
     subadmin_masks_map = {}
+    table_masks_map = {}
 
-    # 1. Populate all canonical modern & historical country IDs (1750-2025)
+    # 1. Populate purely canonical whole-country masks (modern, colonial and historical dissolved states)
     for local_cid in sorted(countries_map.keys()):
       rgb_list = self.synthesizer.entity_rgb_lookup.get(local_cid, [])
-      if rgb_list:
+      if not rgb_list:
+        continue
+      if self.country_resolver.isSubadminEntity(local_cid):
+        subadmin_masks_map[local_cid] = rgb_list
+      else:
         country_masks_map[local_cid] = rgb_list
 
-    # 2. Populate all corpus country keys across all sections (including non-city A4 spillovers)
-    for local_vol, secs_map in sorted(self.corpus_sections_map.items()):
-      for local_sec, sec_dict in sorted(secs_map.items()):
-        if local_sec == "A3":
-          continue
-        for local_k, local_val in sorted(sec_dict.items()):
-          if local_k in ("name", "subtitle"):
-            continue
-          if local_sec == "A4" and not self.city_resolver.isNonCityCorpusKey(local_vol, local_sec, local_k):
-            continue
-          c_ids = self.country_resolver.B_resolveCorpusCountryKey(local_vol, local_sec, local_k, local_val)
-          rgb_list = self.mergeEntityRgbLists(c_ids)
-          if rgb_list:
-            country_key_per_vol.setdefault(local_k, {})[local_vol] = (tuple(c_ids), rgb_list)
-
-    for local_k, vol_dict in sorted(country_key_per_vol.items()):
-      distinct_id_sets = set(v[0] for v in vol_dict.values())
-      if len(distinct_id_sets) == 1:
-        only_rgbs = next(iter(vol_dict.values()))[1]
-        country_masks_map[local_k] = only_rgbs
-      else:
-        union_tuples = set()
-        for local_vol, (_, vol_rgbs) in sorted(vol_dict.items()):
-          country_masks_map[f"{local_vol}.{local_k}"] = vol_rgbs
-          for i in range(len(vol_rgbs)):
-            union_tuples.add(tuple(vol_rgbs[i]))
-        country_masks_map[local_k] = [[t[0], t[1], t[2]] for t in sorted(union_tuples)]
-
-    # 3. Populate canonical city [lng, lat] coordinates (clean city keys only; never A3 spillover headers)
+    # 2. Populate purely canonical city [lng, lat] coordinates
     for local_cid, lng_lat in sorted(cities_map.items()):
       city_masks_map[local_cid] = lng_lat
 
-    # 4. Populate subadmin_masks_map (<parent>, <parent>.<division>, <parent>.<raw_key>)
-    for local_vgk, g_rec in sorted(groups_map.items()):
-      local_gk = local_vgk.split(":", 1)[1]
-      stem_entities = g_rec.get("stem_to_entity_id", {})
-      raw_to_stem = g_rec.get("raw_keys_to_stem", {})
+    # 3. Populate canonical <parent>.<division> masks and sub-imperial/constituent A3 parent group unions
+    for local_did, div_rec in sorted(divisions_map.items()):
+      canon_k = str(div_rec.get("canonical_key") or "")
+      if canon_k:
+        canonical_div_eids.setdefault(canon_k, []).append(local_did)
 
-      if not g_rec.get("is_city_spillover_group"):
-        g_rgbs = self.synthesizer.entity_rgb_lookup.get(g_rec["entity_id"], [])
-        if g_rgbs:
-          subadmin_masks_map[local_gk] = g_rgbs
+    for local_ck, eid_list in sorted(canonical_div_eids.items()):
+      merged_rgbs = self.mergeEntityRgbLists(eid_list)
+      if merged_rgbs:
+        subadmin_masks_map[local_ck] = merged_rgbs
 
-      for local_stem, child_eid in sorted(stem_entities.items()):
-        c_rgbs = self.synthesizer.entity_rgb_lookup.get(child_eid, [])
-        if c_rgbs:
-          subadmin_masks_map[f"{local_gk}.{local_stem}"] = c_rgbs
+    for local_lk, grp_rgbs in sorted(self.synthesizer.entity_rgb_lookup.items()):
+      if not local_lk.startswith("canonical_group:") or not grp_rgbs:
+        continue
+      canon_parent = local_lk.split(":", 1)[1]
+      export_parent = "european_russia" if canon_parent == "russian_empire" else canon_parent
+      if export_parent not in country_masks_map and export_parent not in subadmin_masks_map:
+        subadmin_masks_map[export_parent] = grp_rgbs
 
-      for local_rk, local_stem in sorted(raw_to_stem.items()):
-        if local_stem in stem_entities:
-          child_eid = stem_entities[local_stem]
-          c_rgbs = self.synthesizer.entity_rgb_lookup.get(child_eid, [])
-          if c_rgbs:
-            subadmin_masks_map[f"{local_gk}.{local_rk}"] = c_rgbs
+    # 4. Populate flat table_masks_map ('<volume>/<section>:<table_key>' -> '<type>:<canonical_key>')
+    for local_vol, secs_map in sorted(self.corpus_sections_map.items()):
+      for local_sec, sec_dict in sorted(secs_map.items()):
+        for local_k, local_val in sorted(sec_dict.items()):
+          if local_k in ("name", "subtitle"):
+            continue
+          top_table_key = f"{local_vol}/{local_sec}:{local_k}"
+
+          if local_sec == "A3":
+            g_rec = groups_map.get(f"{local_vol}:{local_k}", {})
+            delegated_stems = g_rec.get("delegated_city_stems", {})
+            raw_to_stem = g_rec.get("raw_keys_to_stem", {})
+            stem_entities = g_rec.get("stem_to_entity_id", {})
+
+            if g_rec.get("is_city_spillover_group"):
+              spill_refs = {f"city:{self.city_resolver.normaliseCityKey(local_k)}"}
+              for _, local_city in delegated_stems.items():
+                spill_refs.add(f"city:{local_city}")
+              table_masks_map[top_table_key] = sorted(spill_refs)
+            elif g_rec.get("header_target"):
+              table_masks_map[top_table_key] = str(g_rec["header_target"])
+            else:
+              canon_grp = str(g_rec.get("canonical_group") or local_k)
+              grp_prefix = "country" if canon_grp in country_masks_map else "subadmin"
+              table_masks_map[top_table_key] = f"{grp_prefix}:{canon_grp}"
+
+            for local_stem, local_city in sorted(delegated_stems.items()):
+              table_masks_map[f"{top_table_key}.{local_stem}"] = f"city:{local_city}"
+
+            for local_stem, child_eid in sorted(stem_entities.items()):
+              div_rec = divisions_map.get(child_eid, {})
+              t_mask = str(div_rec.get("target_mask") or "")
+              if t_mask:
+                table_masks_map[f"{top_table_key}.{local_stem}"] = t_mask
+
+            for local_rk, local_stem in sorted(raw_to_stem.items()):
+              stem_ref = table_masks_map.get(f"{top_table_key}.{local_stem}")
+              if stem_ref:
+                table_masks_map[f"{top_table_key}.{local_rk}"] = stem_ref
+
+          elif local_sec == "A4" and not self.city_resolver.isNonCityCorpusKey(local_vol, local_sec, local_k):
+            canon_city = self.city_resolver.normaliseCityKey(local_k)
+            table_masks_map[top_table_key] = f"city:{canon_city}"
+
+          else:
+            c_ids = self.country_resolver.B_resolveCorpusCountryKey(local_vol, local_sec, local_k, local_val)
+            refs_sorted = sorted(set(self.country_resolver.formatEntityMaskRef(cid) for cid in c_ids))
+            if len(refs_sorted) == 1:
+              table_masks_map[top_table_key] = refs_sorted[0]
+            elif len(refs_sorted) > 1:
+              table_masks_map[top_table_key] = refs_sorted
+              if isinstance(local_val, dict):
+                inner_res = self.country_resolver.resolveWrapperInnerSeries(local_vol, local_sec, local_k, local_val)
+                for local_st, eid in sorted(inner_res["stem_to_entity"].items()):
+                  table_masks_map[f"{top_table_key}.{local_st}"] = self.country_resolver.formatEntityMaskRef(eid)
+                for local_ik, eid in sorted(inner_res["raw_to_entity"].items()):
+                  table_masks_map[f"{top_table_key}.{local_ik}"] = self.country_resolver.formatEntityMaskRef(eid)
 
     #Return statement
-    return (country_masks_map, subadmin_masks_map, city_masks_map)
+    return (country_masks_map, subadmin_masks_map, city_masks_map, table_masks_map)
 
 
   def E_runFullPipeline (self):
     """
-    @brief Step E: Execute the full areal mask synthesis pipeline, export the 3 flat JSON maps and verify 100% coverage.
+    @brief Step E: Execute the full areal mask synthesis pipeline, export the 4 flat JSON maps and verify 100% coverage.
     @return Verification summary dictionary.
     """
     #Declare local instance variables
@@ -272,6 +310,7 @@ class ArealMaskPipeline:
     resolved_bundle = {}
     start_ts = time.time()
     subadmin_masks_map = {}
+    table_masks_map = {}
     written_json = {}
 
     print(self.config_loader.formatLocalisedString(
@@ -282,8 +321,14 @@ class ArealMaskPipeline:
     self.A_loadCorpusSections()
     resolved_bundle = self.B_resolveAllEntities()
     prov_summary = self.C_synthesiseRasters(resolved_bundle)
-    country_masks_map, subadmin_masks_map, city_masks_map = self.D_buildFlatMaskMaps(resolved_bundle)
-    written_json = self.synthesizer.C_exportFlatJsonMaps(country_masks_map, subadmin_masks_map, city_masks_map)
+    country_masks_map, subadmin_masks_map, city_masks_map, table_masks_map = self.D_buildFlatMaskMaps(resolved_bundle)
+    written_json = self.synthesizer.C_exportFlatJsonMaps(
+      country_masks_map,
+      subadmin_masks_map,
+      city_masks_map,
+      table_masks_map
+    )
+    print(self.config_loader.formatLocalisedString("masks_table_lookup_exported", [len(table_masks_map)]))
     audit_res = self.verifyCompleteDeliverables(prov_summary["png_path"], written_json)
 
     elapsed_sec = round(time.time() - start_ts, 2)
@@ -323,11 +368,62 @@ class ArealMaskPipeline:
     return [[int(t[0]), int(t[1]), int(t[2])] for t in sorted(rgb_tuples_set)]
 
 
+  def validateMaskTargetRef (self, arg1_target_val, arg2_country_disk, arg3_subadmin_disk, arg4_city_disk, arg5_png_codes_set):
+    """
+    @brief Validate that a table_masks.json value ('type:key' or list of 'type:key') resolves to non-empty on-disk mask data.
+    @param arg1_target_val String or list value from table_masks.json.
+    @param arg2_country_disk Parsed country_masks.json dictionary.
+    @param arg3_subadmin_disk Parsed subadmin_masks.json dictionary.
+    @param arg4_city_disk Parsed city_masks.json dictionary.
+    @param arg5_png_codes_set Set of 24-bit RGB integer codes present on provinces.png.
+    @return Boolean True if every referenced mask exists and is non-empty on disk.
+    """
+    #Convert from parameters
+    target_val = arg1_target_val
+    country_disk = arg2_country_disk if isinstance(arg2_country_disk, dict) else {}
+    subadmin_disk = arg3_subadmin_disk if isinstance(arg3_subadmin_disk, dict) else {}
+    city_disk = arg4_city_disk if isinstance(arg4_city_disk, dict) else {}
+    png_codes_set = arg5_png_codes_set if isinstance(arg5_png_codes_set, set) else set()
+
+    #Declare local instance variables
+    ref_list = []
+
+    if isinstance(target_val, str) and target_val:
+      ref_list = [target_val]
+    elif isinstance(target_val, list) and target_val:
+      ref_list = target_val
+    else:
+      return False
+
+    for i in range(len(ref_list)):
+      local_ref = str(ref_list[i] or "")
+      if ":" not in local_ref:
+        return False
+      m_type, m_key = local_ref.split(":", 1)
+      if m_type == "country":
+        rgbs = country_disk.get(m_key, [])
+        if not rgbs or not all(((c[0] << 16) | (c[1] << 8) | c[2]) in png_codes_set for c in rgbs):
+          return False
+      elif m_type == "subadmin":
+        rgbs = subadmin_disk.get(m_key, [])
+        if not rgbs or not all(((c[0] << 16) | (c[1] << 8) | c[2]) in png_codes_set for c in rgbs):
+          return False
+      elif m_type == "city":
+        pt = city_disk.get(m_key)
+        if not isinstance(pt, list) or len(pt) != 2 or (abs(pt[0]) < 0.01 and abs(pt[1]) < 0.01):
+          return False
+      else:
+        return False
+
+    #Return statement
+    return True
+
+
   def verifyCompleteDeliverables (self, arg1_png_path, arg2_written_json):
     """
-    @brief Reload provinces.png and the 3 exported flat JSON maps from disk and verify 100% of output/json locations.
+    @brief Reload provinces.png and the 4 exported flat JSON maps from disk and verify 100% end-to-end table lookup coverage.
     @param arg1_png_path Path to provinces.png on disk.
-    @param arg2_written_json Dictionary of paths to country_masks.json, subadmin_masks.json and city_masks.json.
+    @param arg2_written_json Dictionary of paths to country_masks.json, subadmin_masks.json, city_masks.json and table_masks.json.
     @return Verification audit dictionary.
     """
     #Convert from parameters
@@ -342,9 +438,12 @@ class ArealMaskPipeline:
     png_codes_set = set()
     section_count = 0
     subadmin_disk = {}
+    table_disk = {}
     top_accounted = 0
     top_total = 0
     unaccounted_list = []
+    wrapper_series_accounted = 0
+    wrapper_series_total = 0
 
     with Image.open(png_path) as local_im:
       arr = np.asarray(local_im)
@@ -358,6 +457,12 @@ class ArealMaskPipeline:
       subadmin_disk = orjson.loads(local_fh.read())
     with open(written_json["city_masks_json"], "rb") as local_fh:
       city_disk = orjson.loads(local_fh.read())
+    with open(written_json["table_masks_json"], "rb") as local_fh:
+      table_disk = orjson.loads(local_fh.read())
+
+    for local_tk, local_tv in sorted(table_disk.items()):
+      if not self.validateMaskTargetRef(local_tv, country_disk, subadmin_disk, city_disk, png_codes_set):
+        unaccounted_list.append(f"dangling_table_mask:{local_tk}")
 
     for local_vol, secs_map in sorted(self.corpus_sections_map.items()):
       for local_sec, sec_dict in sorted(secs_map.items()):
@@ -366,62 +471,59 @@ class ArealMaskPipeline:
           if local_k in ("name", "subtitle"):
             continue
           top_total = top_total + 1
+          top_lookup_k = f"{local_vol}/{local_sec}:{local_k}"
+          top_target = table_disk.get(top_lookup_k)
 
-          if local_sec == "A3":
-            if local_k in subadmin_disk:
-              rgbs = subadmin_disk[local_k]
-              if rgbs and all(((c[0] << 16) | (c[1] << 8) | c[2]) in png_codes_set for c in rgbs):
-                top_accounted = top_accounted + 1
-              else:
-                unaccounted_list.append(f"{local_vol}:A3:{local_k}")
-            elif local_k in city_disk and len(city_disk[local_k]) == 2:
-              top_accounted = top_accounted + 1
-            else:
-              unaccounted_list.append(f"{local_vol}:A3:{local_k}")
-
-            if isinstance(local_val, dict):
-              for local_rk in sorted(local_val.keys()):
-                if local_rk in ("name", "subtitle"):
-                  continue
-                a3_series_total = a3_series_total + 1
-                comp_key = f"{local_k}.{local_rk}"
-                clean_stem, _ = self.admin_resolver.cleanDivisionStem(local_rk)
-                if comp_key in subadmin_disk:
-                  s_rgbs = subadmin_disk[comp_key]
-                  if s_rgbs and all(((c[0] << 16) | (c[1] << 8) | c[2]) in png_codes_set for c in s_rgbs):
-                    a3_series_accounted = a3_series_accounted + 1
-                  else:
-                    unaccounted_list.append(f"{local_vol}:A3:{comp_key}")
-                elif clean_stem in city_disk and len(city_disk[clean_stem]) == 2:
-                  s_pt = city_disk[clean_stem]
-                  if not (abs(s_pt[0]) < 0.01 and abs(s_pt[1]) < 0.01):
-                    a3_series_accounted = a3_series_accounted + 1
-                  else:
-                    unaccounted_list.append(f"{local_vol}:A3:{comp_key}")
-                else:
-                  unaccounted_list.append(f"{local_vol}:A3:{comp_key}")
-
-          elif local_sec == "A4" and not self.city_resolver.isNonCityCorpusKey(local_vol, local_sec, local_k):
-            pt = city_disk.get(local_k)
-            if isinstance(pt, list) and len(pt) == 2 and not (abs(pt[0]) < 0.01 and abs(pt[1]) < 0.01):
-              top_accounted = top_accounted + 1
-            else:
-              unaccounted_list.append(f"{local_vol}:A4:{local_k}")
-
+          if self.validateMaskTargetRef(top_target, country_disk, subadmin_disk, city_disk, png_codes_set):
+            top_accounted = top_accounted + 1
           else:
-            lookup_k = f"{local_vol}.{local_k}" if f"{local_vol}.{local_k}" in country_disk else local_k
-            rgbs = country_disk.get(lookup_k, [])
-            if rgbs and all(((c[0] << 16) | (c[1] << 8) | c[2]) in png_codes_set for c in rgbs):
-              top_accounted = top_accounted + 1
-            else:
-              unaccounted_list.append(f"{local_vol}:{local_sec}:{local_k}")
+            unaccounted_list.append(top_lookup_k)
+
+          if local_sec == "A3" and isinstance(local_val, dict):
+            for local_rk in sorted(local_val.keys()):
+              if local_rk in ("name", "subtitle"):
+                continue
+              a3_series_total = a3_series_total + 1
+              rk_lookup = f"{top_lookup_k}.{local_rk}"
+              rk_target = table_disk.get(rk_lookup)
+              if isinstance(rk_target, str) and self.validateMaskTargetRef(
+                rk_target,
+                country_disk,
+                subadmin_disk,
+                city_disk,
+                png_codes_set
+              ):
+                a3_series_accounted = a3_series_accounted + 1
+              else:
+                unaccounted_list.append(rk_lookup)
+
+          elif isinstance(top_target, list) and isinstance(local_val, dict):
+            for local_ik in sorted(local_val.keys()):
+              if local_ik in ("name", "subtitle"):
+                continue
+              wrapper_series_total = wrapper_series_total + 1
+              ik_lookup = f"{top_lookup_k}.{local_ik}"
+              ik_target = table_disk.get(ik_lookup)
+              if isinstance(ik_target, str) and self.validateMaskTargetRef(
+                ik_target,
+                country_disk,
+                subadmin_disk,
+                city_disk,
+                png_codes_set
+              ):
+                wrapper_series_accounted = wrapper_series_accounted + 1
+              else:
+                unaccounted_list.append(ik_lookup)
 
     #Return statement
     return {
       "a3_series_accounted": a3_series_accounted,
       "a3_series_total": a3_series_total,
       "section_files_count": section_count,
+      "table_masks_count": len(table_disk),
       "top_locations_accounted": top_accounted,
       "top_locations_total": top_total,
-      "unaccounted_locations": unaccounted_list
+      "unaccounted_locations": unaccounted_list,
+      "wrapper_series_accounted": wrapper_series_accounted,
+      "wrapper_series_total": wrapper_series_total
     }

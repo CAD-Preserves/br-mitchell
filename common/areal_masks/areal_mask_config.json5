@@ -19,12 +19,13 @@
     "output_dir": "output/areal_masks"
   },
 
-  // -- Output PNG raster and flat JSON mask maps (3 .json files total) --
+  // -- Output PNG raster and flat JSON mask maps (4 .json files total) --
   "outputs": {
     "city_masks_json": "city_masks.json",
     "country_masks_json": "country_masks.json",
     "provinces_png": "provinces.png",
-    "subadmin_masks_json": "subadmin_masks.json"
+    "subadmin_masks_json": "subadmin_masks.json",
+    "table_masks_json": "table_masks.json"
   },
 
   // -- Online geospatial vector and geocoding endpoints --

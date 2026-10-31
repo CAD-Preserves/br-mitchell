@@ -1,4 +1,4 @@
-"""@brief Synthesises the collision-free 4320x2160 RGB provinces.png raster and exports the 3 flat JSON mask maps."""
+"""@brief Synthesises the collision-free 4320x2160 RGB provinces.png raster and exports the 4 flat JSON mask maps."""
 
 import os
 import sys
@@ -56,7 +56,8 @@ class ProvinceMapSynthesizer:
     for i in range(len(country_ids)):
       combined_entities.append(countries_map[country_ids[i]])
     for i in range(len(div_ids)):
-      combined_entities.append(divisions_map[div_ids[i]])
+      if divisions_map[div_ids[i]].get("canonical_key"):
+        combined_entities.append(divisions_map[div_ids[i]])
 
     synth_res = self.partitionEquivalenceClasses(combined_entities, png_path, 104729)
     self.province_count = synth_res["province_count"]
@@ -70,17 +71,38 @@ class ProvinceMapSynthesizer:
     }
 
 
-  def B_registerAdminGroupMasks (self, arg1_groups_map):
+  def B_registerAdminGroupMasks (self, arg1_divisions_map, arg2_groups_map):
     """
-    @brief Step B: Aggregate constituent province [R, G, B] colourcodes for all non-spillover A3 parent groups.
-    @param arg1_groups_map Dictionary mapping '<volume>:<group_key>' -> resolved admin_group dictionary.
+    @brief Step B: Aggregate constituent province [R, G, B] colourcodes per canonical A3 parent group and raw A3 group.
+    @param arg1_divisions_map Dictionary mapping division entity_id -> resolved division dictionary.
+    @param arg2_groups_map Dictionary mapping '<volume>:<group_key>' -> resolved admin_group dictionary.
     @return Updated entity_rgb_lookup dictionary.
     """
     #Convert from parameters
-    groups_map = arg1_groups_map if isinstance(arg1_groups_map, dict) else {}
+    divisions_map = arg1_divisions_map if isinstance(arg1_divisions_map, dict) else {}
+    groups_map = arg2_groups_map if isinstance(arg2_groups_map, dict) else {}
 
     #Declare local instance variables
+    div_ids = sorted(divisions_map.keys())
     group_keys = sorted(groups_map.keys())
+    parent_rgb_sets = {}
+
+    for i in range(len(div_ids)):
+      local_did = div_ids[i]
+      div_rec = divisions_map[local_did]
+      canon_parent = str(div_rec.get("canonical_parent") or "")
+      if not canon_parent:
+        continue
+      if canon_parent not in parent_rgb_sets:
+        parent_rgb_sets[canon_parent] = set()
+      div_rgbs = self.entity_rgb_lookup.get(local_did, [])
+      for x in range(len(div_rgbs)):
+        parent_rgb_sets[canon_parent].add(tuple(div_rgbs[x]))
+
+    for local_parent, rgb_set in sorted(parent_rgb_sets.items()):
+      self.entity_rgb_lookup[f"canonical_group:{local_parent}"] = [
+        [int(t[0]), int(t[1]), int(t[2])] for t in sorted(rgb_set)
+      ]
 
     for i in range(len(group_keys)):
       local_gk = group_keys[i]
@@ -96,29 +118,26 @@ class ProvinceMapSynthesizer:
         for x in range(len(child_rgbs)):
           rgb_tuples_set.add(tuple(child_rgbs[x]))
 
-      if local_gk == "europe:ufa" and "admin:rus_gub:ufa" in self.entity_rgb_lookup:
-        u_rgbs = self.entity_rgb_lookup["admin:rus_gub:ufa"]
-        for x in range(len(u_rgbs)):
-          rgb_tuples_set.add(tuple(u_rgbs[x]))
-
       self.entity_rgb_lookup[g_eid] = [[int(t[0]), int(t[1]), int(t[2])] for t in sorted(rgb_tuples_set)]
 
     #Return statement
     return self.entity_rgb_lookup
 
 
-  def C_exportFlatJsonMaps (self, arg1_country_masks_map, arg2_subadmin_masks_map, arg3_city_masks_map):
+  def C_exportFlatJsonMaps (self, arg1_country_masks_map, arg2_subadmin_masks_map, arg3_city_masks_map, arg4_table_masks_map):
     """
-    @brief Step C: Clean obsolete outputs and write country_masks.json, subadmin_masks.json and city_masks.json.
-    @param arg1_country_masks_map Flat dictionary mapping country_key -> [[R, G, B], ...].
-    @param arg2_subadmin_masks_map Flat dictionary mapping subadmin_key -> [[R, G, B], ...].
-    @param arg3_city_masks_map Flat dictionary mapping city_key -> [lng, lat].
+    @brief Step C: Clean obsolete outputs and write country_masks.json, subadmin_masks.json, city_masks.json and table_masks.json.
+    @param arg1_country_masks_map Flat dictionary mapping canonical country_key -> [[R, G, B], ...].
+    @param arg2_subadmin_masks_map Flat dictionary mapping canonical subadmin_key -> [[R, G, B], ...].
+    @param arg3_city_masks_map Flat dictionary mapping canonical city_key -> [lng, lat].
+    @param arg4_table_masks_map Flat dictionary mapping '<volume>/<section>:<table_key>' -> '<type>:<canonical_key>'.
     @return Dictionary of written JSON file paths.
     """
     #Convert from parameters
     country_masks_map = arg1_country_masks_map if isinstance(arg1_country_masks_map, dict) else {}
     subadmin_masks_map = arg2_subadmin_masks_map if isinstance(arg2_subadmin_masks_map, dict) else {}
     city_masks_map = arg3_city_masks_map if isinstance(arg3_city_masks_map, dict) else {}
+    table_masks_map = arg4_table_masks_map if isinstance(arg4_table_masks_map, dict) else {}
 
     #Declare local instance variables
     city_fname = str(self.outputs_cfg.get("city_masks_json", "city_masks.json"))
@@ -127,9 +146,10 @@ class ProvinceMapSynthesizer:
     keep_names = set()
     prov_fname = str(self.outputs_cfg.get("provinces_png", "provinces.png"))
     subadmin_fname = str(self.outputs_cfg.get("subadmin_masks_json", "subadmin_masks.json"))
+    table_fname = str(self.outputs_cfg.get("table_masks_json", "table_masks.json"))
     written_paths = {}
 
-    keep_names = {city_fname, country_fname, prov_fname, subadmin_fname}
+    keep_names = {city_fname, country_fname, prov_fname, subadmin_fname, table_fname}
     existing_files = os.listdir(self.output_dir) if os.path.exists(self.output_dir) else []
     for i in range(len(existing_files)):
       fname = existing_files[i]
@@ -141,14 +161,17 @@ class ProvinceMapSynthesizer:
     p_country = os.path.join(self.output_dir, country_fname)
     p_subadmin = os.path.join(self.output_dir, subadmin_fname)
     p_city = os.path.join(self.output_dir, city_fname)
+    p_table = os.path.join(self.output_dir, table_fname)
 
     self.writeCompactFlatJson(p_country, country_masks_map)
     self.writeCompactFlatJson(p_subadmin, subadmin_masks_map)
     self.writeCompactFlatJson(p_city, city_masks_map)
+    self.writeCompactFlatJson(p_table, table_masks_map)
 
     written_paths["city_masks_json"] = p_city
     written_paths["country_masks_json"] = p_country
     written_paths["subadmin_masks_json"] = p_subadmin
+    written_paths["table_masks_json"] = p_table
 
     #Return statement
     return written_paths

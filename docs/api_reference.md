@@ -5,7 +5,7 @@
 @brief Resolves modern and historical administrative divisions (1750-2025) across all 57 IHS A3 sub-tables.
 
 * **`AdminDivisionMaskResolver`** ÔÇö @brief Resolves sub-national states, provinces, crownlands, guberniyas, counties, Bezirke, and princely agencies.
-* **`A_discoverDelegatedCityKeys`** ÔÇö @brief Step A: Scan all A3 section dictionaries and return city keys delegated to CityMaskResolver (europe/A3 spillovers).
+* **`A_discoverDelegatedCityKeys`** ÔÇö @brief Step A: Scan all A3 section dictionaries and return canonical city keys delegated to CityMaskResolver (europe/A3 spillovers).
 * **`B_resolveAllAdminDivisions`** ÔÇö @brief Step B: Resolve and rasterise every administrative division stem and parent A3 group across all three volumes.
 * **`cleanDivisionStem`** ÔÇö @brief Strip trailing census years, footnotes, leading OCR column numbers, and '_revised' from an A3 series key.
 * **`extractGroupStems`** ÔÇö @brief Group all raw census series keys inside an A3 group dictionary into clean division stems and active year spans.
@@ -16,7 +16,7 @@
 * **`matchUkCountiesFeatures`** ÔÇö @brief Match UK ceremonial / historic counties from uk_counties, with automatic ne_admin1 GBR fallback.
 * **`resolveRuleGeometryIndices`** ÔÇö @brief Execute the configured geospatial lookup and scanline rasterisation for a single division rule.
 * **`resolveSingleDivision`** ÔÇö @brief Resolve and cache a single canonical administrative division entity ('admin:<prefix>:<clean_stem>').
-* **`resolveSpilledGroupHeaderMask`** ÔÇö @brief Provide explicit polygon indices when an A3 group key itself is a page-break spilled division (e.g. 'ufa', 'sardinia').
+* **`resolveSpilledGroupHeaderMask`** ÔÇö @brief Resolve and return polygon indices when an A3 group header has an explicit extra_header_division (e.g. ufa, sardinia, yorkshire).
 
 ## `ArealMaskPipeline.py`
 
@@ -25,11 +25,12 @@
 * **`ArealMaskPipeline`** ÔÇö @brief Orchestrates online vector fetching, country/subadmin/city resolution, provinces.png synthesis and 100% corpus verification.
 * **`A_loadCorpusSections`** ÔÇö @brief Step A: Load all digitised IHS section JSON files across africa_asia_oceania, americas and europe.
 * **`B_resolveAllEntities`** ÔÇö @brief Step B: Resolve all whole countries, individual city [lng, lat] points and sub-national administrative divisions.
-* **`C_synthesiseRasters`** ÔÇö @brief Step C: Synthesise provinces.png (4320x2160 RGB) and register parent A3 group colourcode lists.
-* **`D_buildFlatMaskMaps`** ÔÇö @brief Step D: Construct the 3 flat dictionaries: country_masks_map, subadmin_masks_map and city_masks_map.
-* **`E_runFullPipeline`** ÔÇö @brief Step E: Execute the full areal mask synthesis pipeline, export the 3 flat JSON maps and verify 100% coverage.
+* **`C_synthesiseRasters`** ÔÇö @brief Step C: Synthesise provinces.png (4320x2160 RGB) and register canonical A3 group colourcode lists.
+* **`D_buildFlatMaskMaps`** ÔÇö @brief Step D: Construct canonical country_masks_map, subadmin_masks_map, city_masks_map and flat lookup table_masks_map.
+* **`E_runFullPipeline`** ÔÇö @brief Step E: Execute the full areal mask synthesis pipeline, export the 4 flat JSON maps and verify 100% coverage.
 * **`mergeEntityRgbLists`** ÔÇö @brief Merge and sort unique [R, G, B] triplets across one or more canonical entity IDs.
-* **`verifyCompleteDeliverables`** ÔÇö @brief Reload provinces.png and the 3 exported flat JSON maps from disk and verify 100% of output/json locations.
+* **`validateMaskTargetRef`** ÔÇö @brief Validate that a table_masks.json value ('type:key' or list of 'type:key') resolves to non-empty on-disk mask data.
+* **`verifyCompleteDeliverables`** ÔÇö @brief Reload provinces.png and the 4 exported flat JSON maps from disk and verify 100% end-to-end table lookup coverage.
 
 ## `BraceAndCellResolver.py`
 
@@ -53,10 +54,11 @@
 @brief Resolves individual city [lng, lat] coordinates via Wikipedia GeoHack, Photon (OpenStreetMap) and Nominatim.
 
 * **`CityMaskResolver`** ÔÇö @brief Geocodes all corpus cities to WGS84 [lng, lat] coordinates using GeoHack, Photon OSM and Nominatim.
-* **`A_resolveAllCities`** ÔÇö @brief Step A: Geocode all unique city keys via Wikipedia GeoHack and Photon OSM into [lng, lat] coordinates.
+* **`A_resolveAllCities`** ÔÇö @brief Step A: Geocode all unique canonical city keys via Wikipedia GeoHack and Photon OSM into [lng, lat] coordinates.
 * **`buildCityQueryPlan`** ÔÇö @brief Construct Wikipedia GeoHack title and Photon OpenStreetMap query parameters for a city key.
 * **`fetchPhotonForMissing`** ÔÇö @brief Query Photon OpenStreetMap API sequentially for cities unresolved by Wikipedia GeoHack and persist disk cache.
 * **`isNonCityCorpusKey`** ÔÇö @brief Check whether an A4 corpus key is an explicit country spillover (e.g. americas:A4:canada).
+* **`normaliseCityKey`** ÔÇö @brief Map a raw corpus city slug to its clean canonical key in city_masks.json.
 * **`queryPhotonSingle`** ÔÇö @brief Perform a single HTTP GET against Photon OSM API and indicate whether HTTP 200 succeeded.
 * **`selectBestCoordinates`** ÔÇö @brief Cross-validate Wikipedia GeoHack and Photon OSM coordinates for a city, falling back to Nominatim point lookup if needed.
 
@@ -78,6 +80,8 @@
 * **`A_resolveAllCountries`** ÔÇö @brief Step A: Rasterise all canonical modern and historical country entities onto the 4320x2160 grid.
 * **`B_resolveCorpusCountryKey`** ÔÇö @brief Step B: Resolve a raw corpus JSON location key to one or more canonical country IDs.
 * **`extractCandidateTokens`** ÔÇö @brief Generate progressive prefix/suffix-stripped slug candidates from an OCR or footnote-suffixed corpus key.
+* **`formatEntityMaskRef`** ÔÇö @brief Format a canonical country/subadmin entity ID into a 'type:key' reference for table_masks.json.
+* **`isSubadminEntity`** ÔÇö @brief Check whether an entity in country_rules.json5 belongs in subadmin_masks.json rather than country_masks.json.
 * **`matchAdmin0Features`** ÔÇö @brief Match features in ne_admin0, ne_map_units, or ne_subunits using ISO_A3, ADM0_A3, GU_A3, or SU_A3 codes.
 * **`matchAdmin1Features`** ÔÇö @brief Match state/province features in ne_admin1 for sub-national country entries (e.g. Alaska, Hawaii, Java & Madura).
 * **`matchBritishIndiaFeatures`** ÔÇö @brief Match features from the 1948 British India shapefile layer (e.g. Portuguese Settlements in India).
@@ -85,6 +89,7 @@
 * **`matchHistoricalBasemapFeatures`** ÔÇö @brief Match features from historical world basemap GeoJSONs (e.g. hist_1880) or single-territory historical layers.
 * **`normaliseTargetList`** ÔÇö @brief Convert a string or list of country IDs into a validated list of canonical country IDs.
 * **`resolveSingleCountry`** ÔÇö @brief Resolve and rasterise a single canonical country entity (supporting recursive union and set difference).
+* **`resolveWrapperInnerSeries`** ÔÇö @brief Resolve every inner series key inside a multi-country wrapper sub-table to its exact canonical entity ID.
 * **`scanSubObjectCountries`** ÔÇö @brief Extract canonical country IDs embedded in nested time-series sub-keys (e.g. 'austria_1950', 'japan_1970').
 
 ## `EquirectangularRasteriser.py`
@@ -197,12 +202,12 @@
 
 ## `ProvinceMapSynthesizer.py`
 
-@brief Synthesises the collision-free 4320x2160 RGB provinces.png raster and exports the 3 flat JSON mask maps.
+@brief Synthesises the collision-free 4320x2160 RGB provinces.png raster and exports the 4 flat JSON mask maps.
 
 * **`ProvinceMapSynthesizer`** ÔÇö @brief Partitions overlapping historical/modern masks into atomic RGB provinces and exports flat JSON deliverables.
 * **`A_synthesiseProvincesPng`** ÔÇö @brief Step A: Partition all modern/historical country and admin-division masks into atomic RGB provinces on provinces.png.
-* **`B_registerAdminGroupMasks`** ÔÇö @brief Step B: Aggregate constituent province [R, G, B] colourcodes for all non-spillover A3 parent groups.
-* **`C_exportFlatJsonMaps`** ÔÇö @brief Step C: Clean obsolete outputs and write country_masks.json, subadmin_masks.json and city_masks.json.
+* **`B_registerAdminGroupMasks`** ÔÇö @brief Step B: Aggregate constituent province [R, G, B] colourcodes per canonical A3 parent group and raw A3 group.
+* **`C_exportFlatJsonMaps`** ÔÇö @brief Step C: Clean obsolete outputs and write country_masks.json, subadmin_masks.json, city_masks.json and table_masks.json.
 * **`generateDistinctRgbPalette`** ÔÇö @brief Generate deterministic, collision-free, high-visibility non-zero RGB colours ([R, G, B] != [0, 0, 0]).
 * **`partitionEquivalenceClasses`** ÔÇö @brief Partition pixels across potentially overlapping entities into exact atomic equivalence classes with certified 0 collisions.
 * **`writeCompactFlatJson`** ÔÇö @brief Serialise a flat key -> value JSON dictionary atomically with one 2-space indented entry per line.

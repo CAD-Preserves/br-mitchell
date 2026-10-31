@@ -8,21 +8,24 @@ import numpy as np
 class AdminDivisionMaskResolver:
   """@brief Resolves sub-national states, provinces, crownlands, guberniyas, counties, Bezirke, and princely agencies."""
 
-  def __init__ (self, arg1_fetcher, arg2_rasteriser, arg3_country_resolver, arg4_admin_rules_obj):
+  def __init__ (self, arg1_fetcher, arg2_rasteriser, arg3_country_resolver, arg4_city_resolver, arg5_admin_rules_obj):
     """
-    @brief Initialise AdminDivisionMaskResolver with fetcher, rasteriser, CountryMaskResolver, and admin_division_rules.json5.
+    @brief Initialise AdminDivisionMaskResolver with fetcher, rasteriser, CountryMaskResolver, CityMaskResolver and admin_division_rules.json5.
     @param arg1_fetcher GeoJsonFetcher instance.
     @param arg2_rasteriser EquirectangularRasteriser instance.
     @param arg3_country_resolver CountryMaskResolver instance (with countries already resolved).
-    @param arg4_admin_rules_obj Parsed admin_division_rules.json5 dictionary.
+    @param arg4_city_resolver CityMaskResolver instance for canonical city slug normalisation.
+    @param arg5_admin_rules_obj Parsed admin_division_rules.json5 dictionary.
     """
     #Convert from parameters
     fetcher = arg1_fetcher
     rasteriser = arg2_rasteriser
     country_resolver = arg3_country_resolver
-    admin_rules_obj = arg4_admin_rules_obj if isinstance(arg4_admin_rules_obj, dict) else {}
+    city_resolver = arg4_city_resolver
+    admin_rules_obj = arg5_admin_rules_obj if isinstance(arg5_admin_rules_obj, dict) else {}
 
     #Declare local instance variables
+    self.city_resolver = city_resolver
     self.country_resolver = country_resolver
     self.delegated_cities_map = {}
     self.divisions_cfg = admin_rules_obj.get("divisions", {})
@@ -35,7 +38,7 @@ class AdminDivisionMaskResolver:
 
   def A_discoverDelegatedCityKeys (self, arg1_a3_sections_map):
     """
-    @brief Step A: Scan all A3 section dictionaries and return city keys delegated to CityMaskResolver (europe/A3 spillovers).
+    @brief Step A: Scan all A3 section dictionaries and return canonical city keys delegated to CityMaskResolver (europe/A3 spillovers).
     @param arg1_a3_sections_map Dictionary mapping volume_id -> A3 section dictionary.
     @return Sorted list of canonical city_id strings referenced by A3 groups.
     """
@@ -58,12 +61,13 @@ class AdminDivisionMaskResolver:
         prefix = str(g_cfg.get("prefix") or local_gk)
         default_layer = str(g_cfg.get("default_layer") or "")
         if default_layer == "city_delegate":
-          city_keys_set.add(local_gk)
+          city_keys_set.add(self.city_resolver.normaliseCityKey(local_gk))
         stems_map = self.extractGroupStems(local_gval)
         for local_stem in stems_map.keys():
           div_rule = self.divisions_cfg.get(f"{prefix}:{local_stem}", {})
           if default_layer == "city_delegate" or div_rule.get("layer") == "city_delegate":
-            target_city = str(div_rule.get("city_key") or local_stem)
+            raw_city = str(div_rule.get("city_key") or local_stem)
+            target_city = self.city_resolver.normaliseCityKey(raw_city)
             city_keys_set.add(target_city)
             self.delegated_cities_map[f"{local_vol}:{local_gk}:{local_stem}"] = target_city
 
@@ -93,6 +97,7 @@ class AdminDivisionMaskResolver:
         local_gk = group_keys[x]
         local_gval = sec_obj[local_gk]
         g_cfg = self.groups_cfg.get(f"{local_vol}:{local_gk}", {
+          "canonical_group": local_gk,
           "country": local_gk.upper()[:3],
           "default_layer": "ne_admin1",
           "era_type": "modern",
@@ -114,10 +119,9 @@ class AdminDivisionMaskResolver:
 
           div_rec = self.resolveSingleDivision(local_vol, local_gk, g_cfg, local_stem, years_span)
           group_stem_entities[local_stem] = div_rec["entity_id"]
-          if div_rec["flat_indices"].size > 0:
+          if div_rec["flat_indices"].size > 0 and div_rec.get("canonical_key"):
             group_member_indices.append(div_rec["flat_indices"])
 
-        # Also include header-division polygon if the A3 group header itself is a spilled division (e.g. ufa, sardinia, yorkshire)
         extra_header_idx = self.resolveSpilledGroupHeaderMask(local_vol, local_gk, g_cfg)
         if extra_header_idx.size > 0:
           group_member_indices.append(extra_header_idx)
@@ -125,11 +129,13 @@ class AdminDivisionMaskResolver:
         group_flat = np.unique(np.concatenate(group_member_indices)) if group_member_indices else np.zeros(0, dtype=np.int32)
         group_entity_id = f"admin_group:{local_vol}:{local_gk}"
         self.resolved_groups_obj[f"{local_vol}:{local_gk}"] = {
+          "canonical_group": str(g_cfg.get("canonical_group") or ""),
           "category": "admin_group",
           "delegated_city_stems": group_delegated_cities,
           "entity_id": group_entity_id,
           "era_type": str(g_cfg.get("era_type", "modern")),
           "flat_indices": group_flat,
+          "header_target": str(g_cfg.get("header_target") or ""),
           "is_city_spillover_group": (str(g_cfg.get("default_layer") or "") == "city_delegate"),
           "metrics": self.rasteriser.computeMaskMetrics(group_flat),
           "name": f"{local_vol} A3 group: {local_gk}",
@@ -522,13 +528,18 @@ class AdminDivisionMaskResolver:
     years_span = arg5_years_span if isinstance(arg5_years_span, list) else [1750, 2025]
 
     #Declare local instance variables
+    canonical_group = str(group_cfg.get("canonical_group") or group_key)
+    canonical_key = ""
+    canonical_parent = ""
     div_lookup_key = ""
     entity_id = ""
+    explicit_target = ""
     flat_idx = None
     prefix = str(group_cfg.get("prefix") or group_key)
     record_obj = {}
     rule_obj = {}
     src_summary = {}
+    target_mask = ""
 
     div_lookup_key = f"{prefix}:{clean_stem}"
     entity_id = f"admin:{div_lookup_key}"
@@ -536,12 +547,24 @@ class AdminDivisionMaskResolver:
       return self.resolved_divisions_obj[entity_id]
 
     rule_obj = self.divisions_cfg.get(div_lookup_key, {})
+    explicit_target = str(rule_obj.get("target_mask") or "")
+    if explicit_target:
+      canonical_key = ""
+      canonical_parent = ""
+      target_mask = explicit_target
+    else:
+      canonical_key = str(rule_obj.get("canonical_key") or f"{canonical_group}.{clean_stem}")
+      canonical_parent = canonical_key.split(".", 1)[0] if "." in canonical_key else canonical_group
+      target_mask = f"subadmin:{canonical_key}"
+
     flat_idx, src_summary = self.resolveRuleGeometryIndices(rule_obj, group_cfg, clean_stem)
 
     if flat_idx.size == 0:
       sys.stderr.write(f"Console error: admin division '{entity_id}' ({volume_id}:{group_key}:{clean_stem}) resolved to 0 pixels!\n")
 
     record_obj = {
+      "canonical_key": canonical_key,
+      "canonical_parent": canonical_parent,
       "category": "admin_division",
       "entity_id": entity_id,
       "era_type": str(group_cfg.get("era_type", "modern")),
@@ -550,6 +573,7 @@ class AdminDivisionMaskResolver:
       "metrics": self.rasteriser.computeMaskMetrics(flat_idx),
       "name": f"{clean_stem.replace('_', ' ').title()} ({prefix.upper()})",
       "source_summary": src_summary,
+      "target_mask": target_mask,
       "valid_years": years_span
     }
     self.resolved_divisions_obj[entity_id] = record_obj
@@ -560,7 +584,7 @@ class AdminDivisionMaskResolver:
 
   def resolveSpilledGroupHeaderMask (self, arg1_volume_id, arg2_group_key, arg3_group_cfg):
     """
-    @brief Provide explicit polygon indices when an A3 group key itself is a page-break spilled division (e.g. 'ufa', 'sardinia').
+    @brief Resolve and return polygon indices when an A3 group header has an explicit extra_header_division (e.g. ufa, sardinia, yorkshire).
     @param arg1_volume_id Volume identifier.
     @param arg2_group_key Raw A3 group key.
     @param arg3_group_cfg Group metadata dictionary.
@@ -573,13 +597,11 @@ class AdminDivisionMaskResolver:
 
     #Declare local instance variables
     empty_idx = np.zeros(0, dtype=np.int32)
+    extra_div = str(group_cfg.get("extra_header_division") or "")
     rec = None
 
-    if volume_id == "europe" and group_key == "ufa":
-      rec = self.resolveSingleDivision(volume_id, group_key, group_cfg, "ufa", [1811, 1897])
-      return rec["flat_indices"]
-    elif volume_id == "europe" and group_key == "sardinia":
-      rec = self.resolveSingleDivision(volume_id, group_key, group_cfg, "sardinia", [1770, 1857])
+    if extra_div:
+      rec = self.resolveSingleDivision(volume_id, group_key, group_cfg, extra_div, [1750, 2025])
       return rec["flat_indices"]
 
     #Return statement

@@ -18,6 +18,7 @@ class CityMaskResolver:
 
     #Declare local instance variables
     self.cities_cfg = city_rules_obj.get("cities", {})
+    self.city_aliases_cfg = city_rules_obj.get("city_aliases", {})
     self.country_suffixes_cfg = city_rules_obj.get("country_suffixes", {})
     self.fetcher = fetcher
     self.non_city_keys_set = set(city_rules_obj.get("non_city_keys", []))
@@ -31,9 +32,9 @@ class CityMaskResolver:
 
   def A_resolveAllCities (self, arg1_city_keys_array):
     """
-    @brief Step A: Geocode all unique city keys via Wikipedia GeoHack and Photon OSM into [lng, lat] coordinates.
-    @param arg1_city_keys_array List of unique canonical city_id keys across A4 and spilled europe/A3 entries.
-    @return Dictionary mapping city_id -> [lng, lat] float coordinate pair.
+    @brief Step A: Geocode all unique canonical city keys via Wikipedia GeoHack and Photon OSM into [lng, lat] coordinates.
+    @param arg1_city_keys_array List of raw or canonical city_id keys across A4 and spilled europe/A3 entries.
+    @return Dictionary mapping canonical city_id -> [lng, lat] float coordinate pair.
     """
     #Convert from parameters
     city_keys_array = arg1_city_keys_array if isinstance(arg1_city_keys_array, list) else []
@@ -41,7 +42,7 @@ class CityMaskResolver:
     #Declare local instance variables
     photon_results_map = {}
     plans_map = {}
-    unique_keys = sorted(set(str(k).strip() for k in city_keys_array if str(k).strip()))
+    unique_keys = sorted(set(self.normaliseCityKey(k) for k in city_keys_array if str(k).strip()))
     wiki_results_map = {}
     wiki_titles = []
 
@@ -191,6 +192,22 @@ class CityMaskResolver:
 
     #Return statement
     return f"{volume_id}:{section_id}:{raw_key}" in self.non_city_keys_set
+
+
+  def normaliseCityKey (self, arg1_raw_city_key):
+    """
+    @brief Map a raw corpus city slug to its clean canonical key in city_masks.json.
+    @param arg1_raw_city_key Raw corpus city slug (e.g. 'pakistan', 'marques', 'brussells').
+    @return Canonical snake_case city identifier (e.g. 'hyderabad_pakistan', 'lourenco_marques', 'brussels').
+    """
+    #Convert from parameters
+    raw_city_key = str(arg1_raw_city_key or "").strip().lower()
+
+    #Declare local instance variables
+    canonical_id = str(self.city_aliases_cfg.get(raw_city_key) or raw_city_key)
+
+    #Return statement
+    return canonical_id
 
 
   def queryPhotonSingle (self, arg1_query_str, arg2_expected_iso2):

@@ -20,6 +20,7 @@
   "masks_cities_resolved": "£1£ villes géocodées en coordonnées [lng, lat] via GeoHack et Photon OSM.",
   "masks_divisions_resolved": "£1£ divisions administratives résolues à travers £2£ groupes de sous-tableaux.",
   "masks_synthesised": "£1£ masques RVB provinciaux atomiques synthétisés sur provinces.png.",
+  "masks_table_lookup_exported": "£1£ correspondances tableau-masque exportées dans table_masks.json.",
   "masks_verified_done": "£1£/£2£ lieux du corpus vérifiés (£3£ manquants) dans £4£ fichiers de section en £5£ s."
 }
 
