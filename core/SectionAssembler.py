@@ -39,6 +39,7 @@ class SectionAssembler:
     table_blocks_array = arg3_table_blocks_array if isinstance(arg3_table_blocks_array, list) else []
 
     #Declare local instance variables
+    banner_bottom_y = 0.0
     book_page = None
     chapter_hint = None
     is_continued = False
@@ -76,6 +77,8 @@ class SectionAssembler:
 
       # Never mistake an even-page running header (e.g. '14 International Historical Statistics...') for section 'I4'
       if ln[0]["y_centre"] <= 230 or "international historical statistics" in ln_txt.lower():
+        if ln[0]["y_centre"] < first_table_y - 4.0:
+          banner_bottom_y = max(banner_bottom_y, float(max(t["y2"] for t in ln)) + 4.0)
         continue
 
       if raw_section_id is None:
@@ -86,20 +89,35 @@ class SectionAssembler:
           region_header = parsed_sec["region_header"]
           section_title = parsed_sec["section_title"]
           unit_str = parsed_sec["unit"]
-          # Append wrapped continuation of section title on immediate next line if above table
-          if i + 1 < len(banner_lines):
-            nxt_ln = banner_lines[i + 1]
-            if (nxt_ln[0]["y_centre"] - ln[0]["y_centre"]) <= 68:
-              nxt_txt = self.joinBannerLine(nxt_ln)
-              if nxt_txt and not re.match(r"^(NOTES|FOOTNOTES|Key|Abbreviations|\d{4}\s*[-–])", nxt_txt, re.IGNORECASE):
-                if section_title and ("(" in section_title and ")" not in section_title or nxt_txt.startswith("(")):
-                  section_title = f"{section_title} {nxt_txt}".strip()
-                  u_m = re.search(r"\(([^()]+)\)\s*$", section_title)
-                  if u_m:
-                    unit_str = u_m.group(1).strip()
+          banner_bottom_y = max(banner_bottom_y, float(max(t["y2"] for t in ln)) + 6.0)
+          prev_banner_yc = float(ln[0]["y_centre"])
+
+          # Append wrapped continuation line(s) of section title on immediate next lines above tables
+          for x in range(i + 1, min(len(banner_lines), i + 3)):
+            nxt_ln = banner_lines[x]
+            if (nxt_ln[0]["y_centre"] - prev_banner_yc) > 68:
+              break
+            nxt_txt = self.joinBannerLine(nxt_ln)
+            if not nxt_txt or re.match(r"^(NOTES|FOOTNOTES|Key|Abbreviations|\d{4}\s*[-–—/])", nxt_txt, re.IGNORECASE):
+              break
+            if re.search(r"\b(?:1[789]\d{2}|20[01]\d)\s*[-–—/]\s*[0-9cCoOlI]{2,4}\s*$", nxt_txt):
+              break
+            unclosed_paren = bool(section_title and "(" in section_title and ")" not in section_title)
+            trailing_conn = bool(section_title and re.search(r"\b(?:of|in|on|by|for|and|or|to|from|at|main|major|selected)\s*$", section_title, re.IGNORECASE))
+            has_unit_paren = bool(re.search(r"\((?:in\s+|per\s+|\d{4}\s*=\s*100|millions?\b|thousands?\b|continued)", nxt_txt, re.IGNORECASE))
+            if unclosed_paren or nxt_txt.startswith("(") or trailing_conn or has_unit_paren:
+              section_title = f"{section_title} {nxt_txt}".strip()
+              u_m = re.search(r"\(([^()]+)\)\s*$", section_title)
+              if u_m and "continued" not in u_m.group(1).lower():
+                unit_str = u_m.group(1).strip()
+              banner_bottom_y = max(banner_bottom_y, float(max(t["y2"] for t in nxt_ln)) + 6.0)
+              prev_banner_yc = float(nxt_ln[0]["y_centre"])
+            else:
+              break
 
     #Return statement
     return {
+      "banner_bottom_y": round(banner_bottom_y, 2),
       "book_page": book_page,
       "chapter_hint": chapter_hint,
       "is_continued": is_continued,
@@ -415,7 +433,7 @@ class SectionAssembler:
     txt = str(arg1_line_text).strip()
     chapter_hint = arg2_chapter_hint
 
-    m = re.match(r"^([A-J1lI])([0-9lIi|]{1,2}[a-b]?)(?:_|\.)?\s+(.+)$", txt)
+    m = re.match(r"^([A-J1lI68])([0-9lIi|Oo]{1,2}[a-b]?)(?:_|\.)?\s+(.+)$", txt)
     if not m:
       return None
 
@@ -425,6 +443,14 @@ class SectionAssembler:
 
     if raw_let in ["1", "l", "I"]:
       norm_let = "I"
+    elif raw_let == "6":
+      if chapter_hint != "G":
+        return None
+      norm_let = "G"
+    elif raw_let == "8":
+      if chapter_hint != "B":
+        return None
+      norm_let = "B"
     else:
       norm_let = raw_let.upper()
 
@@ -435,7 +461,14 @@ class SectionAssembler:
     else:
       digit_part = raw_num
 
-    digit_part = digit_part.replace("l", "1").replace("I", "1").replace("i", "1").replace("|", "1")
+    digit_part = (
+      digit_part.replace("l", "1")
+      .replace("I", "1")
+      .replace("i", "1")
+      .replace("|", "1")
+      .replace("O", "0")
+      .replace("o", "0")
+    )
     if not digit_part.isdigit():
       return None
     sec_num = int(digit_part)
@@ -454,11 +487,16 @@ class SectionAssembler:
     is_cont = bool(re.search(r"\(continued\)", rest, re.IGNORECASE))
 
     region_hdr = None
-    reg_m = re.match(r"^(AFRICA|ASIA|OCEANIA|NORTH\s+AMERICA|SOUTH\s+AMERICA|CENTRAL\s+AMERICA|EUROPE)\s*:\s*(.+)$", rest, re.IGNORECASE)
+    reg_m = re.match(
+      r"^((?:(?:AFRICA|ASIA|OCEANIA|NORTH\s+AMERICA|SOUTH\s+AMERICA|CENTRAL\s+AMERICA|THE\s+AMERICAS|AMERICAS|EUROPE)(?:[\s,]*(?:AND|&)?\s*)?)+)\s*:\s*(.+)$",
+      rest,
+      re.IGNORECASE
+    )
     if reg_m:
       region_hdr = re.sub(r"\s+", " ", reg_m.group(1).upper()).strip()
       rest = reg_m.group(2).strip()
 
+    rest = re.sub(r"\)\s*[1-9]\s*$", ")", rest).strip()
     unit_str = None
     unit_m = re.search(r"\(([^()]+)\)\s*$", rest)
     if unit_m and "continued" not in unit_m.group(1).lower():

@@ -90,7 +90,7 @@ class GpuOcrEngine:
     #Declare local instance variables
     adj_contrast = float(self.ocr_cfg.get("adjust_contrast", 0.5))
     batch_sz = int(self.ocr_cfg.get("batch_size", 512))
-    buckets_cfg = sorted([int(w) for w in self.ocr_cfg.get("width_buckets_px", [128, 256, 512, 768])])
+    buckets_cfg = sorted([int(w) for w in self.ocr_cfg.get("width_buckets_px", [128, 256, 512, 768, 1152, 1536, 2048])])
     buckets_map = {w: [] for w in buckets_cfg}
     contrast_ths = float(self.ocr_cfg.get("contrast_ths", 0.1))
     max_bucket_w = buckets_cfg[-1] if buckets_cfg else 512

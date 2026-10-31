@@ -262,7 +262,7 @@ class PagePreprocessor:
     #Declare local instance variables
     bg_sigma = float(self.preproc_cfg.get("bg_blur_sigma", 35.0))
     bin_thresh = int(self.preproc_cfg.get("binary_threshold", 22))
-    margin_px = int(self.render_cfg.get("margin_crop_px", 26))
+    margin_px = int(self.render_cfg.get("margin_crop_px", 14))
 
     if cached_bw is not None:
       bw_mask = cached_bw

@@ -109,7 +109,10 @@ class BraceAndCellResolver:
           if b_sub["brace"] == "{" and abs(b_sub["x_centre"] - b_r["x_centre"]) <= 22 and r0_s >= r0_l - 1 and r1_s <= r1_l + 1:
             used_brace_indices.add(idx_sub)
 
-        reg = self.collectRegionTokens(r0_l, r1_l, cols_between, True, True, rows_array, data_cols_array, data_tokens_array)
+        reg = self.collectRegionTokens(
+          r0_l, r1_l, cols_between, True, True, rows_array, data_cols_array, data_tokens_array,
+          min(b_l["y1"], b_r["y1"]), max(b_l["y2"], b_r["y2"])
+        )
         if reg["captured_tokens"]:
           regions_array.append(reg)
 
@@ -136,7 +139,7 @@ class BraceAndCellResolver:
           ):
             break
           c_parent = data_cols_array[c]["header_path"][0] if len(data_cols_array[c]["header_path"]) > 1 else None
-          if c == first_c or (first_parent and c_parent == first_parent):
+          if (c == first_c or (first_parent and c_parent == first_parent)) and (rows_array[r1]["y2"] - rows_array[r0]["y1"]) <= b["h"]*2.2:
             target_cols.append(c)
           elif self.columnHasSingleCombinedValue(c, r0, r1, rows_array, data_cols_array, data_tokens_array):
             target_cols.append(c)
@@ -145,7 +148,9 @@ class BraceAndCellResolver:
 
         if target_cols:
           used_brace_indices.add(idx_b)
-          reg = self.collectRegionTokens(r0, r1, target_cols, True, False, rows_array, data_cols_array, data_tokens_array)
+          reg = self.collectRegionTokens(
+            r0, r1, target_cols, True, False, rows_array, data_cols_array, data_tokens_array, b["y1"], b["y2"]
+          )
           if reg["captured_tokens"]:
             regions_array.append(reg)
       else:
@@ -162,7 +167,9 @@ class BraceAndCellResolver:
             target_cols = [prev_c, last_c]
         if all(self.columnHasSingleCombinedValue(c, r0, r1, rows_array, data_cols_array, data_tokens_array) for c in target_cols):
           used_brace_indices.add(idx_b)
-          reg = self.collectRegionTokens(r0, r1, target_cols, False, True, rows_array, data_cols_array, data_tokens_array)
+          reg = self.collectRegionTokens(
+            r0, r1, target_cols, False, True, rows_array, data_cols_array, data_tokens_array, b["y1"], b["y2"]
+          )
           if reg["captured_tokens"]:
             regions_array.append(reg)
 
@@ -322,7 +329,7 @@ class BraceAndCellResolver:
     return None
 
 
-  def collectRegionTokens (self, arg1_r0, arg2_r1, arg3_col_indices, arg4_has_left, arg5_has_right, arg6_rows_array, arg7_data_cols_array, arg8_data_tokens_array):
+  def collectRegionTokens (self, arg1_r0, arg2_r1, arg3_col_indices, arg4_has_left, arg5_has_right, arg6_rows_array, arg7_data_cols_array, arg8_data_tokens_array, arg9_brace_y1=None, arg10_brace_y2=None):
     """
     @brief Gather tokens lying inside a braced (row_span x col_set) region, including vertically centred off-grid values.
     @param arg1_r0 Start row index.
@@ -333,6 +340,8 @@ class BraceAndCellResolver:
     @param arg6_rows_array Canonical rows list.
     @param arg7_data_cols_array Data columns list.
     @param arg8_data_tokens_array Body data tokens list.
+    @param arg9_brace_y1 Optional top y bound of the brace stroke(s).
+    @param arg10_brace_y2 Optional bottom y bound of the brace stroke(s).
     @return Resolved brace region dictionary.
     """
     #Convert from parameters
@@ -344,6 +353,8 @@ class BraceAndCellResolver:
     rows_array = arg6_rows_array
     data_cols_array = arg7_data_cols_array
     data_tokens_array = arg8_data_tokens_array
+    brace_y1 = arg9_brace_y1
+    brace_y2 = arg10_brace_y2
 
     #Declare local instance variables
     captured_tokens_array = []
@@ -351,6 +362,9 @@ class BraceAndCellResolver:
     col_tokens_map = {c: [] for c in col_indices}
     y_min = rows_array[r0]["y1"] - 3.0
     y_max = rows_array[r1]["y2"] + 3.0
+    if brace_y1 is not None and brace_y2 is not None:
+      y_min = max(y_min, float(brace_y1) - 24.0)
+      y_max = min(y_max, float(brace_y2) + 24.0)
 
     for i in range(len(data_tokens_array)):
       t = data_tokens_array[i]
@@ -468,7 +482,8 @@ class BraceAndCellResolver:
           if txt not in footnotes_array:
             footnotes_array.append(txt)
           continue
-        if gap <= 24 and (
+        same_line = abs(t.get("y_centre", 0.0) - prev_tok.get("y_centre", 0.0)) <= 15.0
+        if same_line and -6.0 <= gap <= 24.0 and (
           prev_txt.endswith((",", ".", "[", "+", "-"))
           or txt.startswith((",", ".", "]"))
           or (prev_txt[-1:].isdigit() and txt[:1].isdigit())
@@ -512,7 +527,10 @@ class BraceAndCellResolver:
       if tail:
         extra_fn.append(tail)
 
-    work = work.replace(" ", "")
+    work = re.sub(r",\s+", ",", work)
+    work = re.sub(r"\s+,", ",", work)
+    if re.match(r"^[+\-]?\d{1,3}(?:\s\d{3})+(?:\.\d+)?$", work):
+      work = work.replace(" ", "")
 
     # Separate italic census-year suffix attached via apostrophe (e.g. "46'85" -> 46 + "'85")
     apos_m = re.match(r"^([+\-]?\d[\d,]*(?:\.\d+)?)['`‘’](\d{2})$", work)
@@ -530,11 +548,15 @@ class BraceAndCellResolver:
     if re.match(r"^[+\-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?$", work):
       clean_num = work.replace(",", "")
       val = float(clean_num) if "." in clean_num else int(clean_num)
-      return (val, disp, is_bracketed, extra_fn)
+      if abs(val) <= 10**15:
+        return (val, disp, is_bracketed, extra_fn)
+      return (None, None, is_bracketed, extra_fn)
 
     if re.match(r"^[+\-]?\d+(?:\.\d+)?$", work):
       val = float(work) if "." in work else int(work)
-      return (val, disp, is_bracketed, extra_fn)
+      if abs(val) <= 10**15:
+        return (val, disp, is_bracketed, extra_fn)
+      return (None, None, is_bracketed, extra_fn)
 
     #Return statement
     return (None, None, is_bracketed, extra_fn)
@@ -578,6 +600,10 @@ class BraceAndCellResolver:
       base_nm = nm_m.group(1).strip()
       fns_array = [p for p in nm_m.group(2).split(",") if p]
       return (base_nm, fns_array)
+
+    sc_m = re.match(r"^([A-Z])['`‘’]?(\d{1,2}(?:,\d{1,2})*)$", txt)
+    if sc_m:
+      return (sc_m.group(1), [p for p in sc_m.group(2).split(",") if p])
 
     nm_apos = re.match(r"^([A-Za-z][A-Za-z\s.&()/\-–]*?[A-Za-z.)])',\s*(\d{1,2})$", txt)
     if nm_apos:

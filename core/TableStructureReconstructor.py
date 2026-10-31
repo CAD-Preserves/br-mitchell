@@ -1,8 +1,9 @@
-"""@brief Reconstructs multi-level table headers, canonical row/column grids, qualifiers, and brace spans."""
+"""@brief Reconstructs multi-level table headers, canonical row/column grids, two-tier qualifiers and brace spans."""
 
 import re
 import numpy as np
 from core.BraceAndCellResolver import BraceAndCellResolver
+from core.HeaderHierarchyResolver import HeaderHierarchyResolver
 
 
 class TableStructureReconstructor:
@@ -10,24 +11,28 @@ class TableStructureReconstructor:
 
   def __init__ (self, arg1_config_obj):
     """
-    @brief Initialise TableStructureReconstructor and its companion BraceAndCellResolver.
+    @brief Initialise TableStructureReconstructor and its companion BraceAndCellResolver and HeaderHierarchyResolver.
     @param arg1_config_obj Pipeline configuration dictionary loaded from /common/digitiser/.
     """
     #Convert from parameters
     config_obj = arg1_config_obj if isinstance(arg1_config_obj, dict) else {}
 
     #Declare local instance variables
+    flat_cfg = config_obj.get("series_flattening", {})
     self.cell_resolver = BraceAndCellResolver(config_obj)
+    self.header_resolver = HeaderHierarchyResolver(config_obj, self.cell_resolver)
     self.struct_cfg = config_obj.get("structure", {})
+    self.subheaders_set = {str(s).lower() for s in flat_cfg.get("demographic_subheaders", [])}
+    self.whole_qualifiers_set = {str(q).lower() for q in flat_cfg.get("whole_entity_qualifiers", [])}
 
 
   def A_extractSubtableMetadata (self, arg1_block_obj, arg2_all_tokens_array, arg3_prev_bot_y):
     """
-    @brief Step A: Identify sub-table title, date-range banner, and separate header vs body token sets.
+    @brief Step A: Identify sub-table title, date-range banner and separate header vs body token sets.
     @param arg1_block_obj Single table block dictionary from GraphicalElementDetector.
-    @param arg2_all_tokens_array All OCR-populated tokens on the page.
+    @param arg2_all_tokens_array Page OCR tokens below any full-page section banner.
     @param arg3_prev_bot_y Bottom y coordinate of any preceding block in the same vertical column/band.
-    @return Dictionary containing title, title_footnotes, period_banner, header_tokens, and body_tokens.
+    @return Dictionary containing above_phrases, title, title_footnotes, period_banner, header_tokens and body_tokens.
     """
     #Convert from parameters
     blk = arg1_block_obj
@@ -69,12 +74,24 @@ class TableStructureReconstructor:
       above_lines = self.clusterTokensIntoLines(above_tokens_array, 14)
       filtered_above_lines = []
       skip_banner_tail_until_y = -1.0
+      skip_legend_until_y = -1.0
+
       for i in range(len(above_lines)):
         ln = above_lines[i]
         joined = " ".join(tok["text"] for tok in ln).strip()
         ln_yc = float(np.mean([tok["y_centre"] for tok in ln]))
+
         if self.looksLikeSectionBanner(joined):
-          skip_banner_tail_until_y = ln_yc + 52.0
+          skip_banner_tail_until_y = ln_yc + 58.0
+          continue
+        if re.match(r"^(?:Key\s*[:\-–—]|Key\s+to\b|Abbreviations\b|NOTES\b|FOOTNOTES\b|Symbols\b)", joined, re.IGNORECASE):
+          skip_legend_until_y = ln_yc + 56.0
+          continue
+        if "=" in joined and not re.search(r"\b\d{4}\s*=\s*100\b", joined):
+          skip_legend_until_y = ln_yc + 44.0
+          continue
+        if ln_yc <= skip_legend_until_y and (";" in joined or ":" in joined):
+          skip_legend_until_y = ln_yc + 44.0
           continue
         if ln_yc <= skip_banner_tail_until_y or (")" in joined and "(" not in joined) or re.match(r"^\(in\s+", joined, re.IGNORECASE):
           continue
@@ -83,9 +100,34 @@ class TableStructureReconstructor:
       for i in range(len(filtered_above_lines)):
         ln = filtered_above_lines[i]
         joined = " ".join(tok["text"] for tok in ln).strip()
-        phrases_abv = self.groupLineIntoPhrases(ln, 95)
-        if re.match(r"^\d{4}\s*[-–—/]\s*\d{2,4}$", joined) and ln[0]["x1"] > x1 + 0.45*(x2 - x1):
+        phrases_abv = self.header_resolver.groupLineIntoPhrases(ln, 95)
+
+        if self.isPeriodBannerText(joined):
           period_banner = joined
+        elif len(phrases_abv) >= 2 and self.isPeriodBannerText(phrases_abv[-1]["text"]):
+          period_banner = phrases_abv[-1]["text"]
+          left_phrases = phrases_abv[:-1]
+          if len(left_phrases) == 1:
+            clean_t, extra_fns = self.cell_resolver.stripAttachedTitleFootnotes(left_phrases[0]["text"])
+            if clean_t:
+              title_str = f"{title_str} {clean_t}".strip() if title_str else clean_t
+            combined_fns = left_phrases[0]["footnotes"] + extra_fns
+            for x in range(len(combined_fns)):
+              if combined_fns[x] not in title_footnotes_array:
+                title_footnotes_array.append(combined_fns[x])
+          elif (left_phrases[1]["x1"] - left_phrases[0]["x2"]) >= 120:
+            for x in range(len(left_phrases)):
+              clean_p, _ = self.cell_resolver.stripAttachedTitleFootnotes(left_phrases[x]["text"])
+              if clean_p:
+                above_phrases_array.append({"text": clean_p, "x1": left_phrases[x]["x1"], "x2": left_phrases[x]["x2"], "x_centre": left_phrases[x]["x_centre"]})
+          else:
+            raw_left = " ".join(p["text"] for p in left_phrases).strip()
+            clean_t, extra_fns = self.cell_resolver.stripAttachedTitleFootnotes(raw_left)
+            if clean_t:
+              title_str = f"{title_str} {clean_t}".strip() if title_str else clean_t
+            for x in range(len(extra_fns)):
+              if extra_fns[x] not in title_footnotes_array:
+                title_footnotes_array.append(extra_fns[x])
         elif len(phrases_abv) >= 2 and (phrases_abv[1]["x1"] - phrases_abv[0]["x2"]) >= 120:
           for x in range(len(phrases_abv)):
             clean_p, _ = self.cell_resolver.stripAttachedTitleFootnotes(phrases_abv[x]["text"])
@@ -93,7 +135,8 @@ class TableStructureReconstructor:
               above_phrases_array.append({"text": clean_p, "x1": phrases_abv[x]["x1"], "x2": phrases_abv[x]["x2"], "x_centre": phrases_abv[x]["x_centre"]})
         else:
           clean_t, extra_fns = self.cell_resolver.stripAttachedTitleFootnotes(joined)
-          title_str = f"{title_str} {clean_t}".strip() if title_str else clean_t
+          if clean_t:
+            title_str = f"{title_str} {clean_t}".strip() if title_str else clean_t
           for x in range(len(ln)):
             for y in range(len(ln[x].get("footnotes", []))):
               fn = ln[x]["footnotes"][y]
@@ -103,17 +146,33 @@ class TableStructureReconstructor:
             if extra_fns[x] not in title_footnotes_array:
               title_footnotes_array.append(extra_fns[x])
 
+    # Only pop genuine flush-left or table-wide banners inside y_top..y_mid; never pop hyphenated or column-aligned wraps
     if header_tokens_array and not blk.get("cmidrules"):
       h_lines = self.clusterTokensIntoLines(header_tokens_array, int(self.struct_cfg.get("header_row_cluster_tol_px", 14)))
-      while len(h_lines) >= 2:
+      for _ in range(len(h_lines)):
+        if len(h_lines) < 2:
+          break
         top_ln = h_lines[0]
-        phrases = self.groupLineIntoPhrases(top_ln, 26)
+        phrases = self.header_resolver.groupLineIntoPhrases(top_ln, 26)
         if len(phrases) == 1:
-          p_txt = phrases[0]["text"]
-          if not re.match(r"^(M|F|B|D|Total|Date|circa|Imports|Exports|\(.*\))$", p_txt, re.IGNORECASE):
+          p_obj = phrases[0]
+          p_txt = p_obj["text"].strip()
+          is_wrap_or_code = (
+            p_txt.endswith(("-", "–"))
+            or p_txt.lower().rstrip(".") in self.header_resolver.geo_prefix_set
+            or bool(re.match(r"^(?:M|F|B|D|I|E|Total|Date|circa|Imports|Exports|\(.*\))$", p_txt, re.IGNORECASE))
+            or self.isPeriodBannerText(p_txt)
+          )
+          is_flush_left = (p_obj["x1"] <= x1 + 65)
+          is_table_centred_heading = (
+            len(p_txt.split()) >= 2
+            and len(h_lines[1]) >= 3
+            and abs(p_obj["x_centre"] - 0.5*(x1 + x2)) <= 0.10*(x2 - x1)
+          )
+          if not is_wrap_or_code and (is_flush_left or is_table_centred_heading):
             clean_t, extra_fns = self.cell_resolver.stripAttachedTitleFootnotes(p_txt)
             title_str = f"{title_str} - {clean_t}" if title_str else clean_t
-            combined_fns = phrases[0]["footnotes"] + extra_fns
+            combined_fns = p_obj["footnotes"] + extra_fns
             for x in range(len(combined_fns)):
               if combined_fns[x] not in title_footnotes_array:
                 title_footnotes_array.append(combined_fns[x])
@@ -122,8 +181,13 @@ class TableStructureReconstructor:
             h_lines = h_lines[1:]
             continue
         elif len(h_lines) >= 3:
-          phrases_abv = self.groupLineIntoPhrases(top_ln, 65)
-          if len(phrases_abv) >= 2 and phrases_abv[0]["x1"] <= x1 + 65 and (phrases_abv[1]["x1"] - phrases_abv[0]["x2"]) >= 120 and not any(re.match(r"^\d{4}", p["text"]) for p in phrases_abv):
+          phrases_abv = self.header_resolver.groupLineIntoPhrases(top_ln, 65)
+          if (
+            len(phrases_abv) >= 2
+            and phrases_abv[0]["x1"] <= x1 + 65
+            and (phrases_abv[1]["x1"] - phrases_abv[0]["x2"]) >= 120
+            and not any(re.match(r"^\d{4}", p["text"]) or p["text"].endswith(("-", "–")) for p in phrases_abv)
+          ):
             for x in range(len(phrases_abv)):
               clean_p, _ = self.cell_resolver.stripAttachedTitleFootnotes(phrases_abv[x]["text"])
               if clean_p:
@@ -147,7 +211,7 @@ class TableStructureReconstructor:
 
   def B_inferColumns (self, arg1_block_obj, arg2_header_tokens_array, arg3_body_tokens_array):
     """
-    @brief Step B: Reconstruct stub column and data column x-anchors plus multi-level header paths.
+    @brief Step B: Reconstruct stub column and data column x-anchors plus clean multi-level header paths.
     @param arg1_block_obj Table block dictionary (with x1, x2, cmidrules).
     @param arg2_header_tokens_array Header tokens inside (y_top, y_mid).
     @param arg3_body_tokens_array Body tokens inside (y_mid, y_bot).
@@ -164,7 +228,6 @@ class TableStructureReconstructor:
     h_tol = int(self.struct_cfg.get("header_row_cluster_tol_px", 14))
     stub_max_offset = int(self.struct_cfg.get("stub_col_max_right_offset_px", 260))
     x1 = blk["x1"]
-    x2 = blk["x2"]
 
     h_lines = self.clusterTokensIntoLines(header_tokens_array, h_tol) if header_tokens_array else []
 
@@ -201,32 +264,11 @@ class TableStructureReconstructor:
     body_col_clusters = self.clusterColumnCentres(data_body_toks)
     strong_body_cols = [c for c in body_col_clusters if c["count"] >= max(3, int(0.25*max([bc["count"] for bc in body_col_clusters], default=1)))]
 
-    leaf_phrases_array = []
-    unit_footer_lines = []
-    work_h_lines = list(h_lines)
-    while len(work_h_lines) >= 2 and self.isUnitHeaderLine(work_h_lines[-1]):
-      unit_footer_lines.insert(0, work_h_lines.pop())
-    while len(work_h_lines) >= 2 and self.isUnitHeaderLine(work_h_lines[0]):
-      unit_footer_lines.append(work_h_lines.pop(0))
-
-    upper_h_lines = work_h_lines
-    if work_h_lines:
-      bot_ln = work_h_lines[-1]
-      cand_leaves = self.groupHeaderLeafLine(bot_ln, 16)
-      data_leaves = [p for p in cand_leaves if p["x_centre"] > stub_right_x - 12]
-      stub_leaves = [p for p in cand_leaves if p["x_centre"] <= stub_right_x - 12]
-      if len(data_leaves) >= max(1, len(strong_body_cols) - 1):
-        leaf_phrases_array = data_leaves
-        upper_h_lines = work_h_lines[:-1]
-      elif len(work_h_lines) >= 2:
-        prev_leaves = [p for p in self.groupHeaderLeafLine(work_h_lines[-2], 16) if p["x_centre"] > stub_right_x - 12]
-        if len(prev_leaves) > len(data_leaves) and len(prev_leaves) >= max(1, len(strong_body_cols) - 1):
-          leaf_phrases_array = prev_leaves
-          upper_h_lines = work_h_lines[:-2] + [work_h_lines[-1]]
-      stub_label = stub_leaves[0]["text"] if stub_leaves else "row_label"
-    else:
-      stub_label = "row_label"
-    upper_h_lines = list(upper_h_lines) + unit_footer_lines
+    tier_info = self.header_resolver.A_extractLeafAndUpperTiers(h_lines, stub_right_x, len(strong_body_cols))
+    leaf_phrases_array = tier_info["leaf_phrases"]
+    stub_label = tier_info["stub_label"]
+    upper_tiers_array = tier_info["upper_tiers"]
+    leaf_y = tier_info["leaf_y"] if tier_info["leaf_y"] > 0.0 else float(blk["y_mid"])
 
     columns_array.append({
       "col_index": 0,
@@ -239,7 +281,6 @@ class TableStructureReconstructor:
       "x_centre": 0.5*(x1 + stub_right_x)
     })
 
-    # Prefer crisp header leaves unless a strong body column (>25% of max count) lacks a matching leaf
     if leaf_phrases_array and len(leaf_phrases_array) >= len(strong_body_cols):
       for i in range(len(leaf_phrases_array)):
         lp = leaf_phrases_array[i]
@@ -274,35 +315,9 @@ class TableStructureReconstructor:
         })
 
     data_cols = columns_array[1:]
-    if data_cols and upper_h_lines:
-      ordered_tiers = sorted(upper_h_lines, key=lambda ln: float(np.mean([t["y_centre"] for t in ln])))
-      active_leaf_ln = work_h_lines[-1] if work_h_lines else (h_lines[-1] if h_lines else [])
-      leaf_y = float(np.mean([t["y_centre"] for t in active_leaf_ln])) if active_leaf_ln else blk["y_mid"]
-
-      for i in range(len(ordered_tiers)):
-        tier_ln = ordered_tiers[i]
-        tier_y = float(np.mean([t["y_centre"] for t in tier_ln]))
-        is_below_leaves = (tier_y > leaf_y + 4) or self.isUnitHeaderLine(tier_ln)
-        phrase_gap = 68 if is_below_leaves else 24
-        phrases = [p for p in self.groupLineIntoPhrases(tier_ln, phrase_gap) if p["x2"] > stub_right_x - 10]
-        if phrases:
-          self.attachHeaderTierToColumns(phrases, data_cols, cmidrules_array, blk["x2"] - blk["x1"], is_below_leaves)
-
-    for i in range(1, len(columns_array)):
-      col = columns_array[i]
-      clean_path = []
-      for x in range(len(col["header_path"])):
-        seg_txt = re.sub(r"(?:\s*[.…]{2,})+\s*$", "", str(col["header_path"][x])).strip()
-        if not seg_txt or seg_txt in ["...", "—"]:
-          continue
-        c_seg, extra_fns = self.cell_resolver.stripAttachedTitleFootnotes(seg_txt)
-        if c_seg:
-          clean_path.append(c_seg)
-        for y in range(len(extra_fns)):
-          if extra_fns[y] not in col["header_footnotes"]:
-            col["header_footnotes"].append(extra_fns[y])
-      col["header_path"] = clean_path
-      col["label"] = " | ".join(clean_path) if clean_path else f"col_{i}"
+    if data_cols:
+      self.header_resolver.B_attachUpperTiersToColumns(data_cols, upper_tiers_array, leaf_y, stub_right_x, cmidrules_array)
+      self.header_resolver.C_normaliseAndMergeColumnPaths(columns_array)
 
     #Return statement
     return columns_array
@@ -310,8 +325,8 @@ class TableStructureReconstructor:
 
   def C_reconstructRowsAndBraces (self, arg1_block_obj, arg2_columns_array, arg3_body_tokens_array):
     """
-    @brief Step C: Build canonical row grid, resolve curly braces via BraceAndCellResolver, underlines, and qualifiers.
-    @param arg1_block_obj Table block dictionary (with braces and underlines).
+    @brief Step C: Build canonical row grid, resolve vertical/horizontal spans and track two-tier row banners.
+    @param arg1_block_obj Table block dictionary (with braces, col_spans and underlines).
     @param arg2_columns_array Reconstructed columns list from Step B.
     @param arg3_body_tokens_array Body tokens inside (y_mid, y_bot).
     @return Tuple (rows_array, brace_groups_array).
@@ -326,6 +341,7 @@ class TableStructureReconstructor:
 
     #Declare local instance variables
     braces_array = blk.get("braces", [])
+    col_spans_array = blk.get("col_spans", [])
     data_cols = columns_array[1:]
     num_data_cols = len(data_cols)
     row_tol = int(self.struct_cfg.get("row_cluster_tol_px", 15))
@@ -339,7 +355,7 @@ class TableStructureReconstructor:
     canonical_rows_array = []
     for i in range(len(stub_lines)):
       ln = stub_lines[i]
-      lbl_phrase = self.mergeTokensList(ln)
+      lbl_phrase = self.header_resolver.mergeTokensList(ln)
       clean_lbl, extra_fns = self.cell_resolver.stripAttachedTitleFootnotes(lbl_phrase["text"])
       if re.match(r"^(See\s*pp?\.|Seep\.|Superior\s+figure)", clean_lbl, re.IGNORECASE):
         continue
@@ -357,7 +373,6 @@ class TableStructureReconstructor:
         "y_centre": float(np.mean([t["y_centre"] for t in ln]))
       })
 
-    # Merge wrapped 2-line stub labels (e.g. 'Donetsk (Stalino,' + 'Yuzovka)', 'Dniepropetrovsk' + '(Ekaterinoslav)')
     wrap_dy = float(self.struct_cfg.get("wrapped_stub_max_dy_px", 38))
     merged_rows_array = []
     skip_next = False
@@ -402,7 +417,7 @@ class TableStructureReconstructor:
         continue
       oy = float(np.mean([t["y_centre"] for t in oln]))
       has_pure_numbers = sum(1 for t in oln if self.cell_resolver.parseNumericToken(t["text"])[0] is not None)
-      if has_pure_numbers == 0 or re.match(r"^\d{4}\s*=\s*100", joined_txt):
+      if has_pure_numbers == 0 or re.match(r"^\d{4}\s*=\s*100", joined_txt) or self.isSubscopeBanner(joined_txt)[0] is not None:
         qualifier_events_array.append({
           "text": joined_txt,
           "x1": min(t["x1"] for t in oln),
@@ -410,7 +425,6 @@ class TableStructureReconstructor:
           "y_centre": oy
         })
       elif has_pure_numbers >= 2 or len(data_cols) == 1:
-        # Check if orphan numeric tokens droop/rise from either adjacent canonical row into empty columns (e.g. MOZAMBIQUE 70-74, EGYPT 35-39)
         snapped_to_existing = False
         if canonical_rows_array:
           orphan_cols = {
@@ -427,7 +441,7 @@ class TableStructureReconstructor:
           adj_cands.sort(key=lambda r: abs(r["y_centre"] - oy))
 
           for cand_r in adj_cands:
-            if abs(cand_r["y_centre"] - oy) <= 92.0 and orphan_cols:
+            if abs(cand_r["y_centre"] - oy) <= 24.0 and orphan_cols:
               existing_cols = {
                 c for c in (
                   self.cell_resolver.assignTokenToColumnIndex(t, data_cols)
@@ -512,6 +526,8 @@ class TableStructureReconstructor:
         continue
       grouped_row_labels = [canonical_rows_array[r]["row_label"] for r in range(r0, r1 + 1)]
       grouped_col_labels = [data_cols[c]["label"] for c in reg["col_indices"]]
+      non_empty_reg_cols = [c for c in reg["col_indices"] if reg["col_tokens_map"].get(c)]
+      spans_multi_cols = (len(reg["col_indices"]) >= 2 and len(non_empty_reg_cols) == 1)
       group_values_array = []
 
       for x in range(len(reg["col_indices"])):
@@ -521,7 +537,8 @@ class TableStructureReconstructor:
         combined_cell = self.cell_resolver.C_buildCellObject(dc, col_toks, canonical_rows_array[r0]["row_label"], (r0, c_idx) in underlined_cells_set)
         combined_cell["row_span"] = r1 - r0 + 1
         combined_cell["grouped_rows"] = grouped_row_labels
-        combined_cell["grouped_columns"] = [dc["label"]]
+        combined_cell["grouped_columns"] = grouped_col_labels if spans_multi_cols else [dc["label"]]
+        combined_cell["col_span"] = len(grouped_col_labels) if spans_multi_cols else 1
         cell_matrix[r0][c_idx] = combined_cell
         group_values_array.append({
           "column": dc["label"],
@@ -533,11 +550,11 @@ class TableStructureReconstructor:
         for y in range(r0 + 1, r1 + 1):
           cell_matrix[y][c_idx] = {
             "col_index": dc["col_index"],
-            "col_span": 1,
+            "col_span": combined_cell["col_span"],
             "column": dc["label"],
             "estimated_bracketed": False,
             "footnotes": [],
-            "grouped_columns": [dc["label"]],
+            "grouped_columns": combined_cell["grouped_columns"],
             "grouped_rows": grouped_row_labels,
             "numeric_value": None,
             "qualifier": None,
@@ -557,37 +574,91 @@ class TableStructureReconstructor:
           "values": group_values_array
         })
 
-    active_stub_section = None
+    # Apply horizontal body column-span strokes (e.g. \underbrace combining Manufacturing + Construction)
+    for i in range(len(col_spans_array)):
+      sp = col_spans_array[i]
+      spanned_cols = [x for x in range(num_data_cols) if (sp["x1"] - 18.0) <= data_cols[x]["x_centre"] <= (sp["x2"] + 18.0)]
+      if len(spanned_cols) < 2 or num_rows == 0:
+        continue
+      cand_rows = [
+        idx for idx in range(num_rows)
+        if -14.0 <= (sp["y"] - canonical_rows_array[idx]["y_centre"]) <= 46.0
+      ]
+      for x in range(len(cand_rows)):
+        r_idx = cand_rows[x]
+        num_hits = [c for c in spanned_cols if cell_matrix[r_idx][c]["value_status"] == "numeric"]
+        empty_hits = [c for c in spanned_cols if cell_matrix[r_idx][c]["value_status"] == "empty"]
+        if len(num_hits) == 1 and len(num_hits) + len(empty_hits) == len(spanned_cols):
+          hit_c = num_hits[0]
+          cell_matrix[r_idx][hit_c]["grouped_columns"] = [data_cols[c]["label"] for c in spanned_cols]
+          cell_matrix[r_idx][hit_c]["col_span"] = len(spanned_cols)
+
     active_col_qualifiers = [None for _ in range(num_data_cols)]
+    active_subscope = None
     final_rows_array = []
     q_ptr = 0
     qualifier_events_array.sort(key=lambda q: q["y_centre"])
+    row_place_banner = None
 
     for i in range(num_rows):
       r_meta = canonical_rows_array[i]
-      while q_ptr < len(qualifier_events_array) and qualifier_events_array[q_ptr]["y_centre"] < r_meta["y_centre"]:
+      for _ in range(q_ptr, len(qualifier_events_array)):
+        if qualifier_events_array[q_ptr]["y_centre"] >= r_meta["y_centre"]:
+          break
         qe = qualifier_events_array[q_ptr]
-        matched_any = False
-        for x in range(num_data_cols):
-          dc = data_cols[x]
-          if min(qe["x2"], dc["x2"] + 30) - max(qe["x1"], dc["x1"] - 30) >= 10:
-            active_col_qualifiers[x] = qe["text"]
-            matched_any = True
-        if not matched_any:
-          active_stub_section = qe["text"]
+        matched_cols = [
+          x for x in range(num_data_cols)
+          if min(qe["x2"], data_cols[x]["x2"] + 30) - max(qe["x1"], data_cols[x]["x1"] - 30) >= 10
+        ]
+        if matched_cols and len(matched_cols) < max(2, num_data_cols - 1):
+          for x in range(len(matched_cols)):
+            active_col_qualifiers[matched_cols[x]] = qe["text"]
+        else:
+          sub_kind, norm_sub = self.isSubscopeBanner(qe["text"])
+          if sub_kind == "reset":
+            active_subscope = None
+          elif sub_kind == "subscope":
+            active_subscope = norm_sub
+          else:
+            clean_pb = re.sub(
+              r"\s+(?:circa\s+)?(?:1[789]\d{2}|20[01]\d)\s*[-–—/]\s*[0-9cCoOlI]{1,4}[a-zA-Z]?\s*$",
+              "",
+              qe["text"],
+              flags=re.IGNORECASE
+            ).strip()
+            if clean_pb:
+              row_place_banner = clean_pb
+              active_subscope = None
         q_ptr = q_ptr + 1
 
       row_cells = cell_matrix[i]
       lbl = r_meta["row_label"]
       non_empty_cells = [c for c in row_cells if c["raw_text"] != "" or c["value_status"] == "spanned_by_brace"]
 
-      # Convert text-only spanning banner rows (e.g. 'Federal Republic of Yugoslavia') into active sub-section qualifiers
-      if not non_empty_cells and lbl and not re.match(r"^\d{4}", lbl):
-        active_stub_section = f"{active_stub_section} {lbl}".strip() if (active_stub_section and not re.search(r"\b(Zone|Country|Total|Republic)\b", active_stub_section)) else lbl
-        continue
-      if non_empty_cells and all(c["value_status"] == "text" for c in non_empty_cells) and not re.match(r"^\d{4}", lbl):
+      # Two-tier state for text-only stub/spanning rows: subscope ('Males', 'Females', 'Primary') vs country/entity banner
+      is_text_banner_row = (
+        (not non_empty_cells and lbl and not re.match(r"^\d{4}", lbl))
+        or (non_empty_cells and all(c["value_status"] == "text" for c in non_empty_cells) and not re.match(r"^\d{4}", lbl))
+      )
+      if is_text_banner_row:
         banner_parts = ([lbl] if lbl else []) + [c["raw_text"] for c in non_empty_cells]
-        active_stub_section = " ".join(banner_parts).strip()
+        banner_txt = re.sub(
+          r"\s+(?:circa\s+)?(?:1[789]\d{2}|20[01]\d)\s*[-–—/]\s*[0-9cCoOlI]{1,4}[a-zA-Z]?\s*$",
+          "",
+          " ".join(banner_parts).strip(),
+          flags=re.IGNORECASE
+        ).strip()
+        sub_kind, norm_sub = self.isSubscopeBanner(banner_txt)
+        if sub_kind == "reset":
+          active_subscope = None
+        elif sub_kind == "subscope":
+          active_subscope = norm_sub
+        else:
+          if row_place_banner and re.search(r"(?:\b(?:of|and|the)|[,&(\-])$", row_place_banner, re.IGNORECASE):
+            row_place_banner = f"{row_place_banner} {banner_txt}".strip()
+          else:
+            row_place_banner = banner_txt
+          active_subscope = None
         continue
 
       for x in range(num_data_cols):
@@ -596,11 +667,13 @@ class TableStructureReconstructor:
 
       final_rows_array.append({
         "cells": row_cells,
-        "qualifier": active_stub_section,
+        "qualifier": active_subscope if active_subscope else row_place_banner,
         "row_footnotes": r_meta["row_footnotes"],
         "row_index": len(final_rows_array),
         "row_label": lbl,
-        "series_continuation": r_meta["is_continuation"]
+        "row_place_banner": row_place_banner,
+        "series_continuation": r_meta["is_continuation"],
+        "subscope": active_subscope
       })
 
     #Return statement
@@ -609,8 +682,8 @@ class TableStructureReconstructor:
 
   def D_reconstructPageTables (self, arg1_page_info_obj, arg2_table_blocks_array, arg3_tokens_array):
     """
-    @brief Step D: Reconstruct all sub-tables detected on a single page.
-    @param arg1_page_info_obj Dictionary with pdf_page, book_page, orientation, region_header.
+    @brief Step D: Reconstruct all sub-tables detected on a single page after masking full-page banner bounds.
+    @param arg1_page_info_obj Dictionary with pdf_page, book_page, orientation, region_header and banner_bottom_y.
     @param arg2_table_blocks_array Detected graphical table blocks on the page.
     @param arg3_tokens_array Recognised OCR tokens on the page.
     @return List of structured sub-table dictionaries.
@@ -621,18 +694,20 @@ class TableStructureReconstructor:
     tokens_array = arg3_tokens_array if isinstance(arg3_tokens_array, list) else []
 
     #Declare local instance variables
+    banner_bot_y = float(page_info_obj.get("banner_bottom_y") or 0.0)
     reconstructed_array = []
+    work_tokens_array = [t for t in tokens_array if t["y_centre"] > banner_bot_y] if banner_bot_y > 0.0 else tokens_array
 
     for i in range(len(table_blocks_array)):
       blk = table_blocks_array[i]
-      prev_bot = 0.0
+      prev_bot = banner_bot_y
       for x in range(i):
         other = table_blocks_array[x]
         ov = min(blk["x2"], other["x2"]) - max(blk["x1"], other["x1"])
         if ov > 40 and other["y_bot"] < blk["y_top"]:
           prev_bot = max(prev_bot, other["y_bot"])
 
-      meta_obj = self.A_extractSubtableMetadata(blk, tokens_array, prev_bot)
+      meta_obj = self.A_extractSubtableMetadata(blk, work_tokens_array, prev_bot)
       cols_array = self.B_inferColumns(blk, meta_obj["header_tokens"], meta_obj["body_tokens"])
       rows_array, brace_groups_array = self.C_reconstructRowsAndBraces(blk, cols_array, meta_obj["body_tokens"])
 
@@ -644,7 +719,17 @@ class TableStructureReconstructor:
         "bbox_px": [int(blk["x1"]), int(round(blk["y_top"])), int(blk["x2"]), int(round(blk["y_bot"]))],
         "book_page": page_info_obj.get("book_page"),
         "brace_groups": brace_groups_array,
-        "columns": [{"col_index": c["col_index"], "header_footnotes": c["header_footnotes"], "header_path": c["header_path"], "label": c["label"], "role": c["role"], "x_centre": c.get("x_centre", 0.0)} for c in cols_array],
+        "columns": [
+          {
+            "col_index": c["col_index"],
+            "header_footnotes": c["header_footnotes"],
+            "header_path": c["header_path"],
+            "label": c["label"],
+            "role": c["role"],
+            "x_centre": c.get("x_centre", 0.0)
+          }
+          for c in cols_array
+        ],
         "orientation": page_info_obj.get("orientation", "portrait"),
         "pdf_page": page_info_obj.get("pdf_page"),
         "period_banner": meta_obj["period_banner"],
@@ -658,87 +743,11 @@ class TableStructureReconstructor:
     return reconstructed_array
 
 
-  def attachHeaderTierToColumns (self, arg1_phrases_array, arg2_data_cols_array, arg3_cmidrules_array, arg4_table_w, arg5_append_end):
-    """
-    @brief Attach a horizontal tier of header phrases onto matching data columns via cmidrules or Voronoi/overlap.
-    @param arg1_phrases_array Header phrases sorted left-to-right.
-    @param arg2_data_cols_array Data columns sorted left-to-right.
-    @param arg3_cmidrules_array Detected header sub-rules.
-    @param arg4_table_w Pixel width of the sub-table.
-    @param arg5_append_end True when tier sits below column leaves (e.g. unit line), False when above.
-    """
-    #Convert from parameters
-    phrases_array = sorted(arg1_phrases_array, key=lambda p: p["x_centre"])
-    data_cols_array = arg2_data_cols_array
-    cmidrules_array = arg3_cmidrules_array
-    table_w = float(arg4_table_w)
-    append_end = bool(arg5_append_end)
-
-    #Declare local instance variables
-    assignments_array = []
-    phrase_spans = []
-    span_coverage = (phrases_array[-1]["x2"] - phrases_array[0]["x1"])/max(1.0, table_w) if phrases_array else 0.0
-    used_cmid = False
-
-    for i in range(len(phrases_array)):
-      p = phrases_array[i]
-      best_rule = None
-      for x in range(len(cmidrules_array)):
-        r = cmidrules_array[x]
-        dy = (p["y1"] - r["y"]) if append_end else (r["y"] - p["y2"])
-        max_dy = 95 if append_end else 48
-        ov = min(p["x2"], r["x2"]) - max(p["x1"], r["x1"])
-        if -6 <= dy <= max_dy and ov >= min(15.0, 0.3*(p["x2"] - p["x1"])):
-          best_rule = r
-          break
-      if best_rule is not None:
-        used_cmid = True
-        phrase_spans.append((p, best_rule["x1"] - 14, best_rule["x2"] + 14))
-      else:
-        phrase_spans.append((p, None, None))
-
-    if used_cmid:
-      for i in range(len(phrase_spans)):
-        p, rx1, rx2 = phrase_spans[i]
-        if rx1 is None:
-          rx1, rx2 = p["x1"] - 25, p["x2"] + 25
-        assignments_array.append((p, [dc for dc in data_cols_array if rx1 <= dc["x_centre"] <= rx2]))
-    elif len(phrases_array) >= 2 and (span_coverage >= 0.42 or len(phrases_array) == len(data_cols_array)):
-      bounds = [-1e9] + [0.5*(phrases_array[i]["x_centre"] + phrases_array[i + 1]["x_centre"]) for i in range(len(phrases_array) - 1)] + [1e9]
-      for i in range(len(phrases_array)):
-        p = phrases_array[i]
-        assignments_array.append((p, [dc for dc in data_cols_array if bounds[i] <= dc["x_centre"] < bounds[i + 1]]))
-    else:
-      for i in range(len(phrases_array)):
-        p = phrases_array[i]
-        pad = 55.0 if append_end else 32.0
-        matched_cols = [dc for dc in data_cols_array if (p["x1"] - pad) <= dc["x_centre"] <= (p["x2"] + pad)]
-        if not matched_cols and not append_end:
-          for x in range(len(data_cols_array) - 1):
-            c0, c1 = data_cols_array[x], data_cols_array[x + 1]
-            if c0["x_centre"] < p["x_centre"] < c1["x_centre"] and abs(0.5*(c0["x_centre"] + c1["x_centre"]) - p["x_centre"]) <= 36.0:
-              matched_cols = [c0, c1]
-              break
-        assignments_array.append((p, matched_cols))
-
-    for i in range(len(assignments_array)):
-      p, matched_cols = assignments_array[i]
-      for x in range(len(matched_cols)):
-        dc = matched_cols[x]
-        if append_end:
-          dc["header_path"].append(p["text"])
-        else:
-          dc["header_path"].insert(max(0, len(dc["header_path"]) - 1), p["text"])
-        for y in range(len(p["footnotes"])):
-          if p["footnotes"][y] not in dc["header_footnotes"]:
-            dc["header_footnotes"].append(p["footnotes"][y])
-
-
   def clusterColumnCentres (self, arg1_tokens_array):
     """
     @brief Discover horizontal data columns by 1D interval clustering of body cell tokens.
     @param arg1_tokens_array Body tokens located right of the stub column.
-    @return Sorted list of column cluster dictionaries with x1, x2, x_centre, count.
+    @return Sorted list of column cluster dictionaries with x1, x2, x_centre and count.
     """
     #Convert from parameters
     tokens_array = arg1_tokens_array
@@ -839,110 +848,67 @@ class TableStructureReconstructor:
     return [sorted(item["tokens"], key=lambda t: t["x1"]) for item in lines_array]
 
 
-  def groupHeaderLeafLine (self, arg1_line_tokens_array, arg2_max_gap_px):
+  def isPeriodBannerText (self, arg1_text_str):
     """
-    @brief Group bottom-row header leaf tokens while never merging two distinct 4-digit year or code headers.
-    @param arg1_line_tokens_array Left-to-right sorted tokens on the bottom header line.
-    @param arg2_max_gap_px Maximum horizontal gap in pixels for multi-word column leaves.
-    @return List of merged phrase dictionaries.
-    """
-    #Convert from parameters
-    line_tokens_array = arg1_line_tokens_array
-    max_gap = float(arg2_max_gap_px)
-
-    if not line_tokens_array:
-      return []
-
-    groups_array = [[line_tokens_array[0]]]
-    for i in range(1, len(line_tokens_array)):
-      prev = groups_array[-1][-1]
-      cur = line_tokens_array[i]
-      gap = cur["x1"] - prev["x2"]
-      both_years = bool(re.match(r"^\d{4}", prev["text"]) and re.match(r"^\d{4}", cur["text"]))
-      both_codes = bool(re.match(r"^[A-Z]{1,4}$", prev["text"]) and re.match(r"^[A-Z]{1,4}$", cur["text"]))
-      if gap <= max_gap and not both_years and not both_codes:
-        groups_array[-1].append(cur)
-      else:
-        groups_array.append([cur])
-
-    #Return statement
-    return [self.mergeTokensList(grp) for grp in groups_array]
-
-
-  def groupLineIntoPhrases (self, arg1_line_tokens_array, arg2_max_gap_px):
-    """
-    @brief Group horizontally close words on a single line into multi-word phrases.
-    @param arg1_line_tokens_array Left-to-right sorted tokens on one line.
-    @param arg2_max_gap_px Maximum horizontal pixel gap between words in the same phrase.
-    @return List of phrase dictionaries.
+    @brief Check whether a header string is a date-range period banner (including clipped/OCR-noisy ends like '1846-20c').
+    @param arg1_text_str Candidate phrase string.
+    @return Boolean True if text is a historical date range banner.
     """
     #Convert from parameters
-    line_tokens_array = arg1_line_tokens_array
-    max_gap = float(arg2_max_gap_px)
-
-    if not line_tokens_array:
-      return []
-
-    groups_array = [[line_tokens_array[0]]]
-    for i in range(1, len(line_tokens_array)):
-      prev = groups_array[-1][-1]
-      cur = line_tokens_array[i]
-      if cur["x1"] - prev["x2"] <= max_gap:
-        groups_array[-1].append(cur)
-      else:
-        groups_array.append([cur])
+    txt = str(arg1_text_str or "").strip()
 
     #Return statement
-    return [self.mergeTokensList(grp) for grp in groups_array]
+    return bool(re.match(r"^(?:circa\s+)?(?:1[789]\d{2}|20[01]\d)\s*[-–—/]\s*[0-9cCoOlI]{1,4}[a-zA-Z]?$", txt, re.IGNORECASE))
 
 
-  def isUnitHeaderLine (self, arg1_line_tokens_array):
+  def isSubscopeBanner (self, arg1_banner_str):
     """
-    @brief Detect whether a bottom header line is an italic unit/scale sub-banner (e.g. 'million pounds', 'thousand dollars').
-    @param arg1_line_tokens_array Tokens on a single header line.
-    @return Boolean True if every word on the line belongs to statistical unit/scale vocabulary.
+    @brief Classify an in-body text row as 'reset' ('Whole country'), 'subscope' ('Males', '1957 prices') or None (place banner).
+    @param arg1_banner_str Candidate text-only row string.
+    @return Tuple (classification_or_None, normalised_subscope_str).
     """
     #Convert from parameters
-    ln = arg1_line_tokens_array
+    txt = str(arg1_banner_str or "").strip()
 
-    if not ln:
-      return False
+    if not txt:
+      return (None, None)
 
-    unit_vocab = {
-      "acre", "acres", "austral", "australes", "baht", "barrel", "barrels", "billion", "billions",
-      "bolivar", "bolivares", "bushel", "bushels", "cent", "colones", "cordobas", "cruzeiros",
-      "dollar", "dollars", "escudos", "florins", "franc", "francs", "gallon", "gallons", "gourdes",
-      "guilders", "hectare", "hectares", "hour", "hours", "hundred", "hundreds", "in", "kilometre",
-      "kilometres", "kilowatt", "kroner", "kronor", "kwh", "lempiras", "lire", "litre", "litres",
-      "mark", "marks", "metric", "mile", "miles", "million", "millions", "of", "per", "pesetas",
-      "peso", "pesos", "pound", "pounds", "quetzales", "ringgit", "roubles", "rubles", "rupee",
-      "rupees", "shillings", "soles", "sterling", "sucres", "thousand", "thousands", "ton", "tonne",
-      "tonnes", "tons", "won", "yen", "yuan"
-    }
-    words_checked = 0
-    for i in range(len(ln)):
-      raw_w = re.sub(r"[()\[\].,:%0-9/\-–—]", " ", ln[i]["text"].lower()).split()
-      for x in range(len(raw_w)):
-        words_checked = words_checked + 1
-        if raw_w[x] not in unit_vocab:
-          return False
+    clean = re.sub(r"[:.;,\s]+$", "", txt).strip()
+    low = re.sub(r"\s+", " ", clean.lower())
+
+    if low in self.whole_qualifiers_set:
+      return ("reset", None)
+    if low in self.subheaders_set:
+      return ("subscope", clean)
+    if re.match(r"^(?:at\s+)?(?:\d{4}(?:[,/\-\s]+\d{2,4})*\s+)?(?:current\s+|constant\s+|market\s+)?price[s]*$", low):
+      norm_p = re.sub(r"pricess\b", "prices", clean, flags=re.IGNORECASE)
+      return ("subscope", norm_p)
+    if re.search(r"=\s*100\b", low):
+      return ("subscope", clean)
 
     #Return statement
-    return words_checked >= 1
+    return (None, None)
 
 
   def looksLikeSectionBanner (self, arg1_text_str):
     """
-    @brief Check whether a line above top_rule is the page-wide section banner (e.g. 'A2 AFRICA: Population...', 'A1 Population...').
+    @brief Check whether a line above top_rule is a page-wide section banner (including D1O/D2O OCR variants).
     @param arg1_text_str Joined line text.
     @return Boolean True if text matches a lettered-and-numbered section banner.
     """
     #Convert from parameters
     txt = str(arg1_text_str).strip()
 
-    m = re.match(r"^([A-J1lI])([0-9lIi|]{1,2})[a-b]?\b\s+([A-Z][A-Za-z]+|\(continued\))", txt)
+    m = re.match(r"^([A-J1lI68])([0-9lIi|Oo]{1,2})[a-b]?\b\s+([A-Z][A-Za-z]+|\(continued\))", txt)
     if m:
-      d_str = m.group(2).replace("l", "1").replace("I", "1").replace("i", "1").replace("|", "1")
+      d_str = (
+        m.group(2).replace("l", "1")
+        .replace("I", "1")
+        .replace("i", "1")
+        .replace("|", "1")
+        .replace("O", "0")
+        .replace("o", "0")
+      )
       if d_str.isdigit():
         d_val = int(d_str)
         if m.group(1) in ["1", "l", "I"] and d_val > 4:
@@ -952,47 +918,3 @@ class TableStructureReconstructor:
 
     #Return statement
     return bool(re.search(r"\(continued\)", txt, re.IGNORECASE))
-
-
-  def mergeTokensList (self, arg1_tokens_array):
-    """
-    @brief Merge a left-to-right list of phrase/stub tokens into text, footnotes, and bounding coordinates.
-    @param arg1_tokens_array Left-to-right sorted token dictionaries.
-    @return Merged phrase dictionary.
-    """
-    #Convert from parameters
-    tokens_array = arg1_tokens_array
-
-    footnotes_array = []
-    parts_array = []
-    for i in range(len(tokens_array)):
-      t = tokens_array[i]
-      txt = t["text"]
-      for x in range(len(t.get("footnotes", []))):
-        fn = t["footnotes"][x]
-        if fn not in footnotes_array:
-          footnotes_array.append(fn)
-      if not parts_array:
-        parts_array.append(txt)
-      else:
-        gap = t["x1"] - tokens_array[i - 1]["x2"]
-        prev_txt = parts_array[-1]
-        if gap <= 14 and (prev_txt.endswith(("/", "-", "–", "(")) or txt.startswith(("/", "-", "–", ")", ",", ":"))):
-          parts_array[-1] = prev_txt + txt
-        else:
-          parts_array.append(txt)
-
-    x1, x2 = min(t["x1"] for t in tokens_array), max(t["x2"] for t in tokens_array)
-    y1, y2 = min(t["y1"] for t in tokens_array), max(t["y2"] for t in tokens_array)
-
-    #Return statement
-    return {
-      "footnotes": footnotes_array,
-      "text": " ".join(parts_array).strip(),
-      "x1": x1,
-      "x2": x2,
-      "x_centre": 0.5*(x1 + x2),
-      "y1": y1,
-      "y2": y2,
-      "y_centre": 0.5*(y1 + y2)
-    }

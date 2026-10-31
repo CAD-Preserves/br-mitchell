@@ -112,6 +112,7 @@ def B_processSinglePageCpu (arg1_page_index):
     slim_blocks.append({
       "braces": b.get("braces", []),
       "cmidrules": b.get("cmidrules", []),
+      "col_spans": b.get("col_spans", []),
       "underlines": b.get("underlines", []),
       "x1": b["x1"],
       "x2": b["x2"],

@@ -63,7 +63,7 @@ class TokenSegmenter:
     dust_max_area = int(self.tok_cfg.get("dust_max_area_px", 3))
     filtered_bw = None
     glyphs_array = []
-    max_tok_w = int(self.tok_cfg.get("max_token_width_px", 800))
+    max_tok_w = int(self.tok_cfg.get("max_token_width_px", 520))
     min_tok_h = int(self.tok_cfg.get("min_token_height_px", 3))
     min_tok_w = int(self.tok_cfg.get("min_token_width_px", 4))
     word_boxes_array = []
@@ -497,7 +497,7 @@ class TokenSegmenter:
     col_sums = None
     cuts_array = [0]
     in_zero = False
-    min_gap = int(self.tok_cfg.get("wide_split_min_gap_px", 18))
+    min_gap = int(self.tok_cfg.get("wide_split_min_gap_px", 13))
     patch = bw_mask[wy:wy + wh, wx:wx + ww]
     sub_boxes_array = []
     zero_start = 0
@@ -511,11 +511,12 @@ class TokenSegmenter:
       else:
         if in_zero:
           zero_len = i - zero_start
-          if zero_len >= min_gap and (zero_start - cuts_array[-1]) >= 24:
+          if zero_len >= min_gap and (zero_start - cuts_array[-1]) >= 22:
             cuts_array.append((zero_start + i)//2)
           in_zero = False
 
     cuts_array.append(ww)
+
     for i in range(len(cuts_array) - 1):
       gx0 = cuts_array[i]
       gx1 = cuts_array[i + 1]

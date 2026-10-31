@@ -213,6 +213,7 @@ class TableDigitiserPipeline:
             page_lbl = self.cfg_loader.formatLocalisedString("page_label_plain", [pdf_page_1based])
 
           p_info = {
+            "banner_bottom_y": hdr_meta.get("banner_bottom_y", 0.0),
             "book_page": book_folio,
             "orientation": cp["orientation"],
             "pdf_page": cp["page_index"],

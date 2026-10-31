@@ -41,16 +41,36 @@
 
 ## `GraphicalElementDetector.py`
 
-@brief Computer vision detector for booktabs rules, cmidrules, series-break underlines, and curly braces.
+@brief Computer vision detector for booktabs rules, cmidrules, series-break underlines and curly braces.
 
-* **`GraphicalElementDetector`** ÔÇö @brief Extracts graphical layout primitives (rules, sub-table blocks, underlines, and braces) from binary masks.
+* **`GraphicalElementDetector`** ÔÇö @brief Extracts graphical layout primitives (rules, sub-table blocks, underlines and braces) from binary masks.
 * **`A_detectHorizontalStrokes`** ÔÇö @brief Step A: Detect horizontal line segments and merge collinear fragments broken by faint ink.
 * **`B_segmentTableBlocks`** ÔÇö @brief Step B: Group major horizontal rules into column-aligned sub-table blocks (top, mid, bottom).
-* **`C_assignSubRulesAndUnderlines`** ÔÇö @brief Step C: Classify non-major horizontal strokes into header cmidrules and body series-break underlines.
+* **`C_assignSubRulesAndUnderlines`** ÔÇö @brief Step C: Classify non-major horizontal strokes into header cmidrules, body column spans and underlines.
 * **`D_detectCurlyBraces`** ÔÇö @brief Step D: Detect vertical curly braces ({ and }) inside sub-table bodies and determine cusp direction.
 * **`E_detectAllElements`** ÔÇö @brief Step E: Run complete graphical layout detection (strokes -> table blocks -> cmidrules/underlines -> braces).
+* **`filterNestedTableBlocks`** ÔÇö @brief Suppress candidate blocks strictly enclosed inside a wider outer sub-table (e.g. horizontal underbraces).
+* **`probeBodyBelowMissingBottomRule`** ÔÇö @brief Probe below the lowest header rule when a sub-table's bottom rule was cropped or faint.
 * **`sortBlocksReadingOrder`** ÔÇö @brief Sort sub-table blocks in natural multi-column reading order (top-down full-width bands, left-to-right panels).
 * **`splitRuleStackIntoTables`** ÔÇö @brief Partition a vertical stack of major rules sharing [x1, x2] into individual sub-tables at inter-table gaps.
+* **`synthesiseSteppedBottomRules`** ÔÇö @brief Synthesise full-width bottom rules for stepped tables where left and right column blocks end at different depths.
+
+## `HeaderHierarchyResolver.py`
+
+@brief Multi-tier table column header resolver with cmidrule span matching, 1-to-1 wrap merging and de-hyphenation.
+
+* **`HeaderHierarchyResolver`** ÔÇö @brief Resolves multi-line table column headers without Voronoi smearing across blank header space.
+* **`A_extractLeafAndUpperTiers`** ÔÇö @brief Step A: Partition clustered header lines into column leaf phrases, stub label and upper/unit tiers.
+* **`B_attachUpperTiersToColumns`** ÔÇö @brief Step B: Attach upper and unit header tiers onto data columns via cmidrules, centred spans or 1-to-1 wraps.
+* **`C_normaliseAndMergeColumnPaths`** ÔÇö @brief Step C: Heal single-letter I/E OCR errors, de-hyphenate and merge 1-to-1 wrapped column leaves.
+* **`groupHeaderLeafLine`** ÔÇö @brief Group bottom-row header leaf tokens while never merging two distinct 4-digit year or code headers.
+* **`groupLineIntoPhrases`** ÔÇö @brief Group horizontally close words on a single line into multi-word phrases.
+* **`isRepeatingSubindicatorLeaves`** ÔÇö @brief Check whether leaf column labels consist of repeating short sub-indicators or years (e.g. M/F/Total, I/E).
+* **`isUnitHeaderLine`** ÔÇö @brief Detect whether a header line is an italic unit/scale sub-banner (e.g. 'million pounds', 'thousand dollars').
+* **`isYearHeaderText`** ÔÇö @brief Check whether a header segment represents a historical year or year range.
+* **`mergeTokensList`** ÔÇö @brief Merge a left-to-right list of tokens into text, footnotes and bounding coordinates.
+* **`resolveTierColumnAssignments`** ÔÇö @brief Map one horizontal tier of header phrases onto data columns without Voronoi extrapolation across blank space.
+* **`shouldMergeWrappedPair`** ÔÇö @brief Decide whether two consecutive single-column header lines form one wrapped phrase and return merged string.
 
 ## `PagePreprocessor.py`
 
@@ -64,6 +84,18 @@
 * **`E_preprocessPage`** ÔÇö @brief Step E: Execute full preprocessing pipeline (A -> B -> C -> D) for a single PDF page.
 * **`computeIlluminationNormalisedDiff`** ÔÇö @brief Compute illumination-compensated ink contrast in native uint8 SIMD without float32 allocations.
 * **`estimateSmoothBackground`** ÔÇö @brief Estimate low-frequency page illumination background via 4x pyramid downsample + Gaussian blur.
+
+## `PlaceKeyNormaliser.py`
+
+@brief Canonical geographic place-key normaliser, OCR artefact healer and non-place indicator filter.
+
+* **`PlaceKeyNormaliser`** ÔÇö @brief Normalises country, province and city names into snake_case keys and rejects numeric, unit or indicator strings.
+* **`A_normalisePlaceKey`** ÔÇö @brief Step A: Heal OCR artefacts, strip footnote numbers, units and admin scopes, and return a validated place key.
+* **`B_isValidPlaceKey`** ÔÇö @brief Step B: Strictly validate a candidate snake_case place key against numbers, years, prices, units and sectors.
+* **`C_classifySubtableHeading`** ÔÇö @brief Step C: Classify a sub-table heading as either a geographic place_key or a commodity/price indicator_prefix.
+* **`isIndicatorPhrase`** ÔÇö @brief Check whether a column header or row phrase consists solely of economic sector, commodity or demographic words.
+* **`isMacroRegion`** ÔÇö @brief Check whether a header segment is a continent/macro-region label (e.g. 'NORTH AMERICA', 'EUROPE').
+* **`toSnakeSlug`** ÔÇö @brief Transliterate Latin diacritics to ASCII and convert any phrase into clean lowercase snake_case.
 
 ## `SectionAssembler.py`
 
@@ -98,43 +130,40 @@
 
 * **`TableSeriesFlattener`** ÔÇö @brief Maps multi-layout historical tables into clean snake_case place and indicator_year numeric dictionaries.
 * **`A_parseSectionTitleAndSubtitle`** ÔÇö @brief Step A: Split a raw section banner title into clean human-readable name and subtitle strings.
-* **`B_deriveDefaultIndicator`** ÔÇö @brief Step B: Derive a concise snake_case indicator slug for single-series tables (e.g. 'population', 'electric_energy').
+* **`B_deriveDefaultIndicator`** ÔÇö @brief Step B: Derive a concise snake_case indicator slug for single-series tables (e.g. 'population', 'aluminium').
 * **`C_flattenTableIntoPlaces`** ÔÇö @brief Step C: Populate places_obj with {<place_key>: {<indicator>_<year>: number}} entries from one reconstructed table.
 * **`D_buildSectionDocument`** ÔÇö @brief Step D: Build the complete per-section JSON dictionary {<table_key>: {name, subtitle, <place_key>: {...}}}.
-* **`analyseColumnHeader`** ÔÇö @brief Partition a column's header_path segments into years, semantic place/indicator labels, and ignored unit/index lines.
+* **`analyseColumnHeader`** ÔÇö @brief Partition a column's header_path segments into years, semantic place/indicator labels and ignored unit/index lines.
+* **`applyOrCacheColumnSchema`** ÔÇö @brief Cache explicit pure-indicator column headers and apply them onto subsequent headerless col_1..col_C blocks.
 * **`cleanProseSpacing`** ÔÇö @brief Normalise whitespace and heal common OCR kerning artefacts such as '(inthousands)' -> '(in thousands)'.
 * **`detectInternalDateColumns`** ÔÇö @brief Detect mid-table Date/Year stub columns in side-by-side multi-country tables (e.g. Sikkim | Portuguese Settlements).
 * **`extractPlaceOverrideFromQualifier`** ÔÇö @brief Detect mid-table sovereign/entity renames over a country column (e.g. 'West Germany' beneath 'Germany').
-* **`extractQualifierIndicatorSlug`** ÔÇö @brief Convert a sub-entity/scope qualifier (e.g. 'French Zone') into an indicator prefix, ignoring base-year or 'Whole Country' tags.
-* **`extractSubtablePlaceKey`** ÔÇö @brief Extract a valid snake_case place key from a sub-table heading, stripping '(continued)' and rejecting banners/units.
-* **`formatRowBandSlug`** ÔÇö @brief Format a curly-brace spanned group of row labels (e.g. ['10-14', '15-19'] -> '10_19', ['60-64', ..., '80 and over'] -> '60_and_over').
+* **`extractQualifierIndicatorSlug`** ÔÇö @brief Convert a sub-scope qualifier ('Males', '1957 prices', 'French Zone') into an indicator prefix.
+* **`formatRowBandSlug`** ÔÇö @brief Format a curly-brace spanned group of row labels (e.g. ['10-14', '15-19'] -> '10_19') into a compact band slug.
+* **`formatSingleAgeSlug`** ÔÇö @brief Normalise single-year infant ('0'), space-separated ('0 4') and merged ('6064') age labels into canonical slugs.
 * **`formatYearSpanSlug`** ÔÇö @brief Format braced multi-year row labels (e.g. ['1834', '1835'] -> '1834_1835') into a compact year suffix.
-* **`isAgeOrBandLabel`** ÔÇö @brief Check whether a row stub label represents a demographic age band rather than a geographic place.
+* **`isAgeOrBandLabel`** ÔÇö @brief Check whether a row stub label represents a demographic age band (including infant '0', '0 4' and '6064').
 * **`isUnitOrIndexPhrase`** ÔÇö @brief Check whether a header/qualifier phrase is a unit description ('million pounds') or index base ('1913 = 100').
-* **`isYearOrRange`** ÔÇö @brief Check whether a string represents a historical year, slash census year ('1951/2'), or year range ('1867-77').
+* **`isYearOrRange`** ÔÇö @brief Check whether a string represents a historical year, slash census year ('1951/2') or year range ('1867-77').
 * **`normaliseHeadingCase`** ÔÇö @brief Convert ALL-CAPS banner titles to readable Title Case while preserving already mixed-case headings and acronyms.
-* **`resolveMultiCountryColumnPlaces`** ÔÇö @brief Map data columns to country keys when multiple horizontally separated country headings sit above one shared table.
-* **`slugifyPlace`** ÔÇö @brief Convert a country, province, or city name into canonical snake_case (e.g. 'U.K.' -> 'uk', 'Guinea Bissau' -> 'guinea_bissau').
+* **`resolveMultiCountryColumnPlaces`** ÔÇö @brief Map data columns to country keys when horizontally separated country headings sit above a shared table.
 * **`slugifyYear`** ÔÇö @brief Normalise a year or slash/range year into clean snake_case (e.g. '1951/2' -> '1951_2').
-* **`toSnakeSlug`** ÔÇö @brief Transliterate Latin diacritics to ASCII and convert any phrase into clean lowercase snake_case.
+* **`toSnakeSlug`** ÔÇö @brief Convert any phrase into clean lowercase ASCII snake_case via PlaceKeyNormaliser.
 
 ## `TableStructureReconstructor.py`
 
-@brief Reconstructs multi-level table headers, canonical row/column grids, qualifiers, and brace spans.
+@brief Reconstructs multi-level table headers, canonical row/column grids, two-tier qualifiers and brace spans.
 
 * **`TableStructureReconstructor`** ÔÇö @brief Converts detected graphical blocks and OCR tokens on a page into structured, analysis-ready table objects.
-* **`A_extractSubtableMetadata`** ÔÇö @brief Step A: Identify sub-table title, date-range banner, and separate header vs body token sets.
-* **`B_inferColumns`** ÔÇö @brief Step B: Reconstruct stub column and data column x-anchors plus multi-level header paths.
-* **`C_reconstructRowsAndBraces`** ÔÇö @brief Step C: Build canonical row grid, resolve curly braces via BraceAndCellResolver, underlines, and qualifiers.
-* **`D_reconstructPageTables`** ÔÇö @brief Step D: Reconstruct all sub-tables detected on a single page.
-* **`attachHeaderTierToColumns`** ÔÇö @brief Attach a horizontal tier of header phrases onto matching data columns via cmidrules or Voronoi/overlap.
+* **`A_extractSubtableMetadata`** ÔÇö @brief Step A: Identify sub-table title, date-range banner and separate header vs body token sets.
+* **`B_inferColumns`** ÔÇö @brief Step B: Reconstruct stub column and data column x-anchors plus clean multi-level header paths.
+* **`C_reconstructRowsAndBraces`** ÔÇö @brief Step C: Build canonical row grid, resolve vertical/horizontal spans and track two-tier row banners.
+* **`D_reconstructPageTables`** ÔÇö @brief Step D: Reconstruct all sub-tables detected on a single page after masking full-page banner bounds.
 * **`clusterColumnCentres`** ÔÇö @brief Discover horizontal data columns by 1D interval clustering of body cell tokens.
 * **`clusterTokensIntoLines`** ÔÇö @brief Group tokens sharing approximately the same vertical baseline centre into left-to-right sorted lines.
-* **`groupHeaderLeafLine`** ÔÇö @brief Group bottom-row header leaf tokens while never merging two distinct 4-digit year or code headers.
-* **`groupLineIntoPhrases`** ÔÇö @brief Group horizontally close words on a single line into multi-word phrases.
-* **`isUnitHeaderLine`** ÔÇö @brief Detect whether a bottom header line is an italic unit/scale sub-banner (e.g. 'million pounds', 'thousand dollars').
-* **`looksLikeSectionBanner`** ÔÇö @brief Check whether a line above top_rule is the page-wide section banner (e.g. 'A2 AFRICA: Population...', 'A1 Population...').
-* **`mergeTokensList`** ÔÇö @brief Merge a left-to-right list of phrase/stub tokens into text, footnotes, and bounding coordinates.
+* **`isPeriodBannerText`** ÔÇö @brief Check whether a header string is a date-range period banner (including clipped/OCR-noisy ends like '1846-20c').
+* **`isSubscopeBanner`** ÔÇö @brief Classify an in-body text row as 'reset' ('Whole country'), 'subscope' ('Males', '1957 prices') or None (place banner).
+* **`looksLikeSectionBanner`** ÔÇö @brief Check whether a line above top_rule is a page-wide section banner (including D1O/D2O OCR variants).
 
 ## `TokenSegmenter.py`
 
