@@ -4,7 +4,7 @@
     "dpi": 300,
     "margin_crop_px": 26,
     "num_cpu_workers": 12,
-    "page_batch_size": 36
+    "page_batch_size": 12
   },
 
   // -- Image preprocessing and orientation parameters --

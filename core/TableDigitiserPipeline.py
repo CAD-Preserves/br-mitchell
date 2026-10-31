@@ -2,6 +2,7 @@
 
 from concurrent.futures import ProcessPoolExecutor
 import os
+import re
 import sys
 import time
 import orjson
@@ -146,10 +147,14 @@ class TableDigitiserPipeline:
 
     print(self.cfg_loader.formatLocalisedString("volume_started", [vol_task["volume_id"], num_pages]), flush=True)
 
+    live_state_obj = {
+      "chap": None,
+      "num": 0,
+      "sec_id": None,
+      "sfx": ""
+    }
     page_records_array = []
     processed_count = 0
-    total_tokens_count = 0
-    t_vol_start = time.time()
 
     chunks_array = [page_indices[i:i + batch_sz] for i in range(0, num_pages, batch_sz)]
 
@@ -182,22 +187,54 @@ class TableDigitiserPipeline:
 
         for x in range(len(batch_cpu_pages)):
           cp = batch_cpu_pages[x]
+          processed_count = processed_count + 1
+          pct_complete = float((100.0*processed_count)/max(1, num_pages))
+          pdf_page_1based = int(cp["page_index"]) + 1
+
           if cp["is_blank"]:
+            page_lbl = self.cfg_loader.formatLocalisedString("page_label_plain", [pdf_page_1based])
+            tbl_lbl = self.cfg_loader.formatLocalisedString("table_label_none", [])
+            print(
+              self.cfg_loader.formatLocalisedString("table_read_progress", [vol_task["volume_id"], page_lbl, tbl_lbl, pct_complete]),
+              flush=True
+            )
             continue
 
-          total_tokens_count = total_tokens_count + len(cp["tokens"])
           hdr_meta = self.section_assembler.A_extractPageHeaderMetadata(
             cp["tokens"],
             cp["ph_tokens"],
             cp["table_blocks"]
           )
+          live_sec_id = self.updateLiveSectionState(live_state_obj, hdr_meta)
+          book_folio = hdr_meta.get("book_page")
+          if book_folio:
+            page_lbl = self.cfg_loader.formatLocalisedString("page_label_with_folio", [pdf_page_1based, book_folio])
+          else:
+            page_lbl = self.cfg_loader.formatLocalisedString("page_label_plain", [pdf_page_1based])
+
           p_info = {
-            "book_page": hdr_meta.get("book_page"),
+            "book_page": book_folio,
             "orientation": cp["orientation"],
             "pdf_page": cp["page_index"],
             "region_header": hdr_meta.get("region_header")
           }
           tables = self.reconstructor.D_reconstructPageTables(p_info, cp["table_blocks"], cp["tokens"])
+          valid_tables = [t for t in tables if t.get("rows")]
+
+          if valid_tables:
+            for y in range(len(valid_tables)):
+              tbl_name = self.formatTableDisplayName(live_sec_id, valid_tables[y], y, len(valid_tables))
+              tbl_lbl = self.cfg_loader.formatLocalisedString("table_label_named", [tbl_name])
+              print(
+                self.cfg_loader.formatLocalisedString("table_read_progress", [vol_task["volume_id"], page_lbl, tbl_lbl, pct_complete]),
+                flush=True
+              )
+          else:
+            tbl_lbl = self.cfg_loader.formatLocalisedString("table_label_none", [])
+            print(
+              self.cfg_loader.formatLocalisedString("table_read_progress", [vol_task["volume_id"], page_lbl, tbl_lbl, pct_complete]),
+              flush=True
+            )
 
           page_records_array.append({
             "header_meta": hdr_meta,
@@ -205,14 +242,6 @@ class TableDigitiserPipeline:
             "pdf_page": cp["page_index"],
             "tables": tables
           })
-
-        processed_count = processed_count + len(batch_cpu_pages)
-        elapsed = max(0.001, time.time() - t_vol_start)
-        tok_rate = self.cfg_loader.formatEuropeanNumber(total_tokens_count/elapsed)
-        print(
-          self.cfg_loader.formatLocalisedString("page_progress", [vol_task["volume_id"], processed_count, num_pages, tok_rate]),
-          flush=True
-        )
 
     #Return statement
     return page_records_array
@@ -284,4 +313,90 @@ class TableDigitiserPipeline:
       "total_sections": total_sections,
       "volumes": all_volume_summaries_array
     }
+
+
+  def formatTableDisplayName (self, arg1_sec_id, arg2_table_obj, arg3_table_idx, arg4_num_tables):
+    """
+    @brief Build a concise human-readable table identifier (e.g. 'A1 (Algeria)', 'A2 (MALI / NIGERIA)', 'C1') for progress logs.
+    @param arg1_sec_id Active section code string or None.
+    @param arg2_table_obj Reconstructed table dictionary.
+    @param arg3_table_idx Zero-based index of this table on the page.
+    @param arg4_num_tables Total valid tables on the page.
+    @return Clean table label string.
+    """
+    #Convert from parameters
+    sec_id = str(arg1_sec_id or "").strip()
+    tbl = arg2_table_obj if isinstance(arg2_table_obj, dict) else {}
+    tbl_idx = int(arg3_table_idx)
+    num_tbls = int(arg4_num_tables)
+
+    #Declare local instance variables
+    abv_list = [str(p.get("text", "")).strip() for p in tbl.get("above_phrases", []) if str(p.get("text", "")).strip()]
+    raw_sub = str(tbl.get("subtable_title") or "").strip()
+    reject_re = r"^(?:NOTES|FOOTNOTES|Key\b|circa|Date|See\s+pp?\.|The\s+population\b|Included\s+from\b)"
+    sec_prefix = sec_id if sec_id else "?"
+    sub_label = ""
+
+    if abv_list:
+      sub_label = " / ".join(abv_list)
+    elif raw_sub:
+      cand = raw_sub
+      if " - " in cand:
+        parts = [
+          p.strip() for p in cand.split(" - ")
+          if p.strip() and "=" not in p and len(p.split()) <= 6 and not re.match(reject_re, p.strip(), re.IGNORECASE)
+        ]
+        cand = parts[0] if parts else ""
+      cand = re.sub(r"([A-Za-z.)])[?*'‘’`´]+\d{0,2}$", r"\1", cand).strip()
+      cand = re.sub(r"([A-Za-z]{3,}?)[zZ]{2}$", r"\1", cand).strip()
+      if cand and "=" not in cand and len(cand.split()) <= 8 and not re.match(reject_re, cand, re.IGNORECASE):
+        sub_label = cand
+
+    #Return statement
+    if sub_label:
+      return f"{sec_prefix} ({sub_label})"
+    elif num_tbls > 1:
+      return f"{sec_prefix} (#{tbl_idx + 1})"
+    else:
+      return sec_prefix
+
+
+  def updateLiveSectionState (self, arg1_live_state_obj, arg2_hdr_meta_obj):
+    """
+    @brief Maintain live monotonic section state across streaming pages for real-time progress readout.
+    @param arg1_live_state_obj Mutable dictionary tracking chap, num, sec_id, and sfx.
+    @param arg2_hdr_meta_obj Extracted page header metadata dictionary.
+    @return Current active section ID string or None.
+    """
+    #Convert from parameters
+    state = arg1_live_state_obj
+    hdr_meta = arg2_hdr_meta_obj if isinstance(arg2_hdr_meta_obj, dict) else {}
+
+    #Declare local instance variables
+    cand = hdr_meta.get("raw_section_id")
+    chap_hint = hdr_meta.get("chapter_hint")
+    is_cont = bool(hdr_meta.get("is_continued", False))
+    valid_chaps = {"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"}
+
+    if cand is not None:
+      c_let, c_num, c_sfx = self.section_assembler.splitSectionCode(cand)
+      if c_let in valid_chaps:
+        active_chap = state["chap"]
+        active_num = state["num"]
+        if active_chap is None:
+          if (c_let == "A" and 1 <= c_num <= 3) or (chap_hint == c_let and 1 <= c_num <= 30) or (not is_cont and c_let != "I" and 1 <= c_num <= 30):
+            state["sec_id"], state["chap"], state["num"], state["sfx"] = cand, c_let, c_num, c_sfx
+        elif c_let == active_chap:
+          if c_num == active_num:
+            if not (state["sfx"] and not c_sfx and is_cont):
+              state["sec_id"], state["sfx"] = cand, c_sfx
+          elif active_num < c_num <= active_num + 4:
+            state["sec_id"], state["chap"], state["num"], state["sfx"] = cand, c_let, c_num, c_sfx
+        elif ord(c_let) == ord(active_chap) + 1 and 1 <= c_num <= 3:
+          state["sec_id"], state["chap"], state["num"], state["sfx"] = cand, c_let, c_num, c_sfx
+        elif ord(c_let) > ord(active_chap) and chap_hint == c_let and 1 <= c_num <= 3:
+          state["sec_id"], state["chap"], state["num"], state["sfx"] = cand, c_let, c_num, c_sfx
+
+    #Return statement
+    return state["sec_id"]
 

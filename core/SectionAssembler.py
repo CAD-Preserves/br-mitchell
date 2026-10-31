@@ -157,7 +157,7 @@ class SectionAssembler:
         c_let, c_num, c_sfx = self.splitSectionCode(cand)
         if c_let in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]:
           if active_chap is None:
-            if c_let == "A" and 1 <= c_num <= 3:
+            if (c_let == "A" and 1 <= c_num <= 3) or (chap_hint == c_let and 1 <= c_num <= 30) or (not is_cont and c_let != "I" and 1 <= c_num <= 30):
               active_sec, active_chap, active_num, active_sfx = cand, c_let, c_num, c_sfx
           else:
             upcoming = [repaired_ids[k] for k in range(i + 1, min(n_pages, i + 10)) if repaired_ids[k] is not None][:3]

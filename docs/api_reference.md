@@ -89,6 +89,8 @@
 * **`B_resolveTargetVolumes`** ÔÇö @brief Step B: Resolve configured BR Mitchell volumes or arbitrary user-supplied PDF file paths.
 * **`C_processVolumePages`** ÔÇö @brief Step C: Run double-buffered multiprocessing CPU CV + batched GPU OCR + table reconstruction across a volume.
 * **`D_runPipeline`** ÔÇö @brief Step D: Execute full digitisation pipeline across resolved volume(s) and write per-section JSON + manifest.
+* **`formatTableDisplayName`** ÔÇö @brief Build a concise human-readable table identifier (e.g. 'A1 (Algeria)', 'A2 (MALI / NIGERIA)', 'C1') for progress logs.
+* **`updateLiveSectionState`** ÔÇö @brief Maintain live monotonic section state across streaming pages for real-time progress readout.
 
 ## `TableSeriesFlattener.py`
 
