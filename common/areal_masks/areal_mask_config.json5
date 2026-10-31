@@ -1,0 +1,138 @@
+{
+  // -- WGS84 Equirectangular raster specification (5-arcminute / 0,083333 deg grid) --
+  "grid": {
+    "bbox_wgs84": [-180.0, -90.0, 180.0, 90.0],
+    "crs": "EPSG:4326",
+    "height": 2160,
+    "pixels_per_degree": 12.0,
+    "projection": "WGS84 Equirectangular",
+    "supersample_factor": 2,
+    "width": 4320
+  },
+
+  // -- Input / output and temporary download cache paths --
+  "paths": {
+    "cache_dir": "tests/geo_cache",
+    "input_json_dir": "output/json",
+    "localisation_dir": "localisation",
+    "manifest_path": "output/json/manifest.json",
+    "output_dir": "output/areal_masks"
+  },
+
+  // -- Output PNG rasters and JSON mask registries --
+  "outputs": {
+    "admin_divisions_historical_png": "admin_divisions_historical.png",
+    "admin_divisions_modern_png": "admin_divisions_modern.png",
+    "cities_png": "cities.png",
+    "countries_historical_1914_png": "countries_historical_1914.png",
+    "countries_historical_1960_png": "countries_historical_1960.png",
+    "countries_modern_png": "countries_modern.png",
+    "entities_registry_json": "entities_registry.json",
+    "location_index_json": "location_index.json",
+    "provinces_catalog_json": "provinces_catalog.json",
+    "provinces_png": "provinces.png",
+    "summary_json": "summary.json"
+  },
+
+  // -- Online geospatial vector and geocoding endpoints --
+  "sources": {
+    "base_layers": {
+      "british_india_1948": {
+        "archive_member_dbf": "britishraj_atemporal.dbf",
+        "archive_member_shp": "britishraj_atemporal.shp",
+        "format": "shapefile_zip",
+        "url": "https://raw.githubusercontent.com/neonhydroxide/hgis/main/britishindia_1948.zip"
+      },
+      "cshapes_2": {
+        "format": "geojson",
+        "url": "https://icr.ethz.ch/data/cshapes/CShapes-2.0.geojson"
+      },
+      "galicia_habsburg": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/ioggstream/europe-historical-geojson/master/data/geojson/map-Galizia.geojson"
+      },
+      "germany_1914": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/ioggstream/europe-historical-geojson/master/data/geojson/germany-1914.geojson"
+      },
+      "hist_1783": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/aourednik/historical-basemaps/master/geojson/world_1783.geojson"
+      },
+      "hist_1815": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/aourednik/historical-basemaps/master/geojson/world_1815.geojson"
+      },
+      "hist_1880": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/aourednik/historical-basemaps/master/geojson/world_1880.geojson"
+      },
+      "hist_1900": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/aourednik/historical-basemaps/master/geojson/world_1900.geojson"
+      },
+      "hist_1914": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/aourednik/historical-basemaps/master/geojson/world_1914.geojson"
+      },
+      "hist_1920": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/aourednik/historical-basemaps/master/geojson/world_1920.geojson"
+      },
+      "hist_1938": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/aourednik/historical-basemaps/master/geojson/world_1938.geojson"
+      },
+      "hist_1960": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/aourednik/historical-basemaps/master/geojson/world_1960.geojson"
+      },
+      "hist_1994": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/aourednik/historical-basemaps/master/geojson/world_1994.geojson"
+      },
+      "hungary_transleithania": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/ioggstream/europe-historical-geojson/master/data/geojson/map-Ungheria.geojson"
+      },
+      "ne_admin0": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson"
+      },
+      "ne_admin1": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces.geojson"
+      },
+      "ne_lakes": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_lakes.geojson"
+      },
+      "ne_map_units": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_map_units.geojson"
+      },
+      "ne_subunits": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_map_subunits.geojson"
+      },
+      "ne_urban": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_urban_areas.geojson"
+      },
+      "russia_1897": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/ivseliv/senat/main/lex/data/province-boundaries-1897.json"
+      },
+      "uk_counties": {
+        "format": "geojson",
+        "url": "https://raw.githubusercontent.com/evansd/uk-ceremonial-counties/master/uk-ceremonial-counties.geojson"
+      }
+    },
+    "gadm_template": "https://geodata.ucdavis.edu/gadm/gadm4.1/json/gadm41_£1£_£2£.json",
+    "gadm_zip_template": "https://geodata.ucdavis.edu/gadm/gadm4.1/json/gadm41_£1£_£2£.json.zip",
+    "nominatim_search_url": "https://nominatim.openstreetmap.org/search",
+    "photon_api_url": "https://photon.komoot.io/api/",
+    "user_agent": "BRMitchellArealMasks/1.0 (International-Historical-Statistics-WGS84-Areal-Masks)",
+    "wikipedia_api_url": "https://en.wikipedia.org/w/api.php"
+  }
+}
