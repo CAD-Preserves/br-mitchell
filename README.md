@@ -1,7 +1,7 @@
 # br-mitchell
 
 > [!NOTE]
-> This is kept out-of-sample for the NWM for verification and testing purposes. It is not incorporated into other Confederal models.
+> This is kept out-of-sample of the NWM for verification and testing purposes. It is not incorporated into other Confederal models.
 
 Data structuring repository for BR Mitchell's _International Historical Statistics_. This means we take source PDF files/scans of BR Mitchell from our private collections and restructure it into usable JSON for dataset work, particularly in testing and validation.
 
