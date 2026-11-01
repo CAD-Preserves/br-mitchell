@@ -7,6 +7,9 @@ Data structuring repository for BR Mitchell's _International Historical Statisti
 
 JSON outputs are in `/outputs/`. To digitise from your own PDFs, see `/common/digitiser/volumes_config.json5` to point to your own filepaths, then run `autorun.bat`/`autorun.sh`. For IP reasons, we do not include our scans of BR Mitchell.
 
+- `/outputs/areal_masks/` - Areal masks for tabular data (4320x2160 WGS84 Equirectangular).
+- `/outputs/json/` - Tabular data.
+
 <details open>
   <summary><b>Table of Contents.</b></summary>
 
