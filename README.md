@@ -20,10 +20,10 @@ JSON outputs are in `/outputs/`. To digitise from your own PDFs, see `/common/di
 | **A4** | Population of Major Cities | Population of Major Cities | Population of Major Cities |
 | **A5** | Population Estimates | Mid-Year Population Estimates | Mid-year Population Estimates |
 | **A6** | Vital Statistics | Vital Statistics | Vital Statistics |
-| **A6a** | — | Collver's Estimates of Average Vital Rates for Quinquennia 1895–1959 | — |
+| **A6a** | - | Collver's Estimates of Average Vital Rates for Quinquennia 1895-1959 | - |
 | **A7** | Deaths of Infants Under One Year Old per 1,000 Live Births | Infant Mortality Rates | Deaths of Infants Under One Year Old per 1,000 Live Births |
 | **A8** | International Migrants | International Migrations | Emigration from Europe by Decades |
-| **A9** | — | — | Annual Migration Statistics |
+| **A9** | - | - | Annual Migration Statistics |
 
 ---
 
@@ -35,7 +35,7 @@ JSON outputs are in `/outputs/`. To digitise from your own PDFs, see `/common/di
 | **B2** | Unemployment | Unemployment | Unemployment |
 | **B3** | Industrial Disputes | Industrial Disputes | Industrial Disputes |
 | **B4** | Indices of Wages or Earnings | Money Wages in Industry | Money Wages in Industry |
-| **B5** | — | Wages in Agriculture | Money Wages in Agriculture |
+| **B5** | - | Wages in Agriculture | Money Wages in Agriculture |
 
 ---
 
@@ -54,14 +54,14 @@ JSON outputs are in `/outputs/`. To digitise from your own PDFs, see `/common/di
 | **C9** | Output of Tobacco | Area of Vineyards and Output of Wine | Landings of Fish |
 | **C10** | Output of Rubber | Numbers of Livestock | External Trade in Corn |
 | **C11** | Numbers of Livestock | Output of Cow's Milk | Exports of Agricultural, Fishing and Forestry Products |
-| **C12** | Output of Meat | Output of Butter | — |
-| **C13** | Output of Milk | Output of Meat | — |
-| **C14** | Output of Butter | Landings of Fish | — |
-| **C15** | Output of Wool | Exports of Wheat by Main Trading Countries | — |
-| **C16** | Landings of Fish | Exports of Sugar by Main Trading Countries | — |
-| **C17** | Exports of Various Agricultural Commodities by Major Exporting Countries | Exports of Principal Livestock Products by Main Trading Countries | — |
-| **C18** | — | Exports of Various Agricultural Commodities by Main Trading Countries | — |
-| **C19** | — | Exports of Timber Products by Main Trading Countries | — |
+| **C12** | Output of Meat | Output of Butter | - |
+| **C13** | Output of Milk | Output of Meat | - |
+| **C14** | Output of Butter | Landings of Fish | - |
+| **C15** | Output of Wool | Exports of Wheat by Main Trading Countries | - |
+| **C16** | Landings of Fish | Exports of Sugar by Main Trading Countries | - |
+| **C17** | Exports of Various Agricultural Commodities by Major Exporting Countries | Exports of Principal Livestock Products by Main Trading Countries | - |
+| **C18** | - | Exports of Various Agricultural Commodities by Main Trading Countries | - |
+| **C19** | - | Exports of Timber Products by Main Trading Countries | - |
 
 ---
 
@@ -94,8 +94,8 @@ JSON outputs are in `/outputs/`. To digitise from your own PDFs, see `/common/di
 | **D23** | Output of Beer | Imports and Exports of Coal by Main Trading Countries | Output of Sulphuric Acid |
 | **D24** | Output of Electric Energy | Imports and Exports of Petroleum by Main Trading Countries | Timber Industry Indicators |
 | **D25** | Imports and Exports of Coal by Main Trading Countries | Imports and Exports of Iron Ore by Main Trading Countries | Output of Motor Vehicles |
-| **D26** | Imports and Exports of Petroleum by Main Trading Countries | — | Output of Beer |
-| **D27** | Imports and Exports of Iron Ore by Main Trading Countries | — | Output of Electric Energy |
+| **D26** | Imports and Exports of Petroleum by Main Trading Countries | - | Output of Beer |
+| **D27** | Imports and Exports of Iron Ore by Main Trading Countries | - | Output of Electric Energy |
 
 ---
 
@@ -105,7 +105,7 @@ JSON outputs are in `/outputs/`. To digitise from your own PDFs, see `/common/di
 | :--- | :--- | :--- | :--- |
 | **E1** | External Trade: Aggregate Current Values | External Trade Aggregates in Current Values | External Trade Aggregate Current Value |
 | **E2** | External Trade with Main Trading Partners | External Trade (in Current Values) with Main Trading Partners | External Trade (by value) with Main Trading Partners |
-| **E3** | Major Commodity Exports by Main Exporting Countries | Major Commodity Exports by Main Exporting Countries | — |
+| **E3** | Major Commodity Exports by Main Exporting Countries | Major Commodity Exports by Main Exporting Countries | - |
 
 ---
 
@@ -122,7 +122,7 @@ JSON outputs are in `/outputs/`. To digitise from your own PDFs, see `/common/di
 | **F7** | Postal and Telegraph Traffic | Civil Aviation Traffic | Commercial Aviation |
 | **F8** | Telephones in Use | Postal and Telegraph Traffic | Postal and Telegraph Services |
 | **F9** | Radio and Television Sets in Use | Number of Telephones in Use | Telephone Services |
-| **F10** | — | Radio and Television Sets in Use | Radio and Television Receiving Licences |
+| **F10** | - | Radio and Television Sets in Use | Radio and Television Receiving Licences |
 
 ---
 
@@ -172,13 +172,13 @@ JSON outputs are in `/outputs/`. To digitise from your own PDFs, see `/common/di
 
 ## Directory Structure
 
-- `common/areal_masks/` — JSON5 geospatial configurations and country, administrative-division and city mask rules (`areal_mask_config.json5`, `country_rules.json5`, `admin_division_rules.json5`, `city_rules.json5`).
-- `common/digitiser/` — JSON5 pipeline and volume configurations (`pipeline_config.json5`, `volumes_config.json5`).
-- `core/` — Modular Python CV + CUDA EasyOCR pipeline (`PagePreprocessor`, `GraphicalElementDetector`, `TokenSegmenter`, `GpuOcrEngine`, `BraceAndCellResolver`, `HeaderHierarchyResolver`, `TableStructureReconstructor`, `PlaceKeyNormaliser`, `TableSeriesFlattener`, `SectionAssembler`, `TableDigitiserPipeline` and `cli_runner.py`).
-- `docs/` — Doxygen configuration (`Doxyfile`), pipeline architecture, JSON schema (`architecture_and_schema.md`) and generated API reference (`api_reference.md`).
-- `localisation/` — CLI localisation strings in EN-GB, FR and DE (`en_gb.json5`, `fr.json5`, `de.json5`).
-- `output/areal_masks/` — `4320x2160` WGS84 Equirectangular lossless RGB `.png` areal mask (`provinces.png`) plus flat JSON registries (`country_masks.json`, `subadmin_masks.json`, `city_masks.json` and `table_masks.json`) covering 100% of corpus locations.
-- `output/json/` — Digitised per-section JSON files namespaced by volume (`africa_asia_oceania/`, `americas/`, `europe/`) plus `manifest.json`.
+- `common/areal_masks/` - JSON5 geospatial configurations and country, administrative-division and city mask rules (`areal_mask_config.json5`, `country_rules.json5`, `admin_division_rules.json5`, `city_rules.json5`).
+- `common/digitiser/` - JSON5 pipeline and volume configurations (`pipeline_config.json5`, `volumes_config.json5`).
+- `core/` - Modular Python CV + CUDA EasyOCR pipeline (`PagePreprocessor`, `GraphicalElementDetector`, `TokenSegmenter`, `GpuOcrEngine`, `BraceAndCellResolver`, `HeaderHierarchyResolver`, `TableStructureReconstructor`, `PlaceKeyNormaliser`, `TableSeriesFlattener`, `SectionAssembler`, `TableDigitiserPipeline` and `cli_runner.py`).
+- `docs/` - Doxygen configuration (`Doxyfile`), pipeline architecture, JSON schema (`architecture_and_schema.md`) and generated API reference (`api_reference.md`).
+- `localisation/` - CLI localisation strings in EN-GB, FR and DE (`en_gb.json5`, `fr.json5`, `de.json5`).
+- `output/areal_masks/` - `4320x2160` WGS84 Equirectangular lossless RGB `.png` areal mask (`provinces.png`) plus flat JSON registries (`country_masks.json`, `subadmin_masks.json`, `city_masks.json` and `table_masks.json`) covering 100% of corpus locations.
+- `output/json/` - Digitised per-section JSON files namespaced by volume (`africa_asia_oceania/`, `americas/`, `europe/`) plus `manifest.json`.
 
 ## Usage
 
