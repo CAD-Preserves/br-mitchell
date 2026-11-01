@@ -1,7 +1,7 @@
 # br-mitchell
 
-> [!WARNING]
-> We cannot always guarantee JSON keys are well-formatted, only that the data is complete. You will likely have to extract and clean these `.json` source files yourself for the target domain you wish to study.
+> [!NOTE]
+> This is kept out-of-sample for the NWM for verification and testing purposes. It is not incorporated into other Confederal models.
 
 Data structuring repository for BR Mitchell's _International Historical Statistics_. This means we take source PDF files/scans of BR Mitchell from our private collections and restructure it into usable JSON for dataset work, particularly in testing and validation.
 
